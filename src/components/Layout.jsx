@@ -20,11 +20,15 @@ export default function Layout() {
 
     const navigation = [
         { name: 'Dashboard', href: '/', icon: Home, current: location.pathname === '/' },
-        { name: 'My Schedule', href: '/schedule', icon: Calendar, current: location.pathname === '/schedule' },
-        { name: 'Reports', href: '/reports', icon: FileText, current: location.pathname === '/reports' }, // Removed adminOnly for demo
-        { name: 'Timetable Set', href: '/timetable', icon: Settings, current: location.pathname === '/timetable' }, // New Item
-        { name: 'Faculty List', href: '/faculty', icon: User, current: location.pathname === '/faculty', adminOnly: true },
+        { name: 'Teaching Timetable', href: '/schedule', icon: Calendar, current: location.pathname === '/schedule' },
+        { name: 'Department Reports', href: '/reports', icon: FileText, current: location.pathname === '/reports' },
+        { name: 'Timetable Setup', href: '/timetable', icon: Settings, current: location.pathname === '/timetable', adminOnly: true },
+        { name: 'Faculty Master', href: '/faculty', icon: User, current: location.pathname === '/faculty', adminOnly: true },
     ];
+
+    const role = user?.role?.toLowerCase() || '';
+    const email = user?.email?.toLowerCase() || '';
+    const isManagement = role === 'admin' || role === 'hod' || role === 'administrator' || email === 'admin@vit.edu';
 
     return (
         <div className="h-screen flex overflow-hidden bg-gray-100">
@@ -48,7 +52,7 @@ export default function Layout() {
                             </div>
                             <nav className="mt-5 px-2 space-y-1">
                                 {navigation.map((item) => (
-                                    (!item.adminOnly || user?.role === 'admin') && (
+                                    (!item.adminOnly || isManagement) && (
                                         <Link
                                             key={item.name}
                                             to={item.href}
@@ -85,7 +89,7 @@ export default function Layout() {
                             </div>
                             <nav className="mt-5 flex-1 px-2 space-y-1">
                                 {navigation.map((item) => (
-                                    (!item.adminOnly || user?.role === 'admin') && (
+                                    (!item.adminOnly || isManagement) && (
                                         <Link
                                             key={item.name}
                                             to={item.href}
@@ -109,8 +113,14 @@ export default function Layout() {
                                     </div>
                                 </div>
                                 <div className="ml-3">
-                                    <p className="text-sm font-medium text-white">{user?.full_name}</p>
-                                    <button onClick={logout} className="text-xs font-medium text-blue-200 group-hover:text-white">
+                                    <p className="text-[10px] text-blue-200 font-bold uppercase tracking-widest mb-0.5">
+                                        {isManagement ? (role === 'hod' ? 'Head of Dept' : 'Administrator') : 'Faculty'}
+                                    </p>
+                                    <div className="flex items-center gap-2">
+                                        <p className="text-sm font-bold text-white leading-none">{user?.full_name || user?.email}</p>
+                                        {isManagement && <span className="bg-green-400 text-black text-[8px] font-bold px-1 rounded">PRO</span>}
+                                    </div>
+                                    <button onClick={logout} className="text-[10px] font-medium text-blue-300 hover:text-white mt-1 border-b border-blue-600">
                                         Sign Out
                                     </button>
                                 </div>

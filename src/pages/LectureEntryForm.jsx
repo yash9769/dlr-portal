@@ -27,6 +27,8 @@ export default function LectureEntryForm() {
         remarks: ''
     });
 
+    const [alreadySubmitted, setAlreadySubmitted] = useState(false);
+
     useEffect(() => {
         async function loadData() {
             try {
@@ -45,7 +47,20 @@ export default function LectureEntryForm() {
                     }));
                 }
 
-                // 2. Fetch Faculty List
+                // 2. Check if already submitted for today
+                const today = new Date().toISOString().split('T')[0];
+                const { records } = await api.dlr.getReportData(today);
+                const existing = records.find(r => r.timetable_id === id);
+                if (existing) {
+                    setAlreadySubmitted(true);
+                    setFormData({
+                        ...existing,
+                        actual_start_time: existing.actual_start_time?.slice(0, 5),
+                        actual_end_time: existing.actual_end_time?.slice(0, 5),
+                    });
+                }
+
+                // 3. Fetch Faculty List
                 const { data: faculty } = await api.faculty.list();
                 setFacultyList(faculty || []);
 
@@ -104,7 +119,7 @@ export default function LectureEntryForm() {
                     <button onClick={() => navigate('/')} className="mr-4 text-gray-500 hover:text-gray-700">
                         <ArrowLeft className="h-6 w-6" />
                     </button>
-                    <h1 className="text-2xl font-bold text-gray-900">Lecture Entry</h1>
+                    <h1 className="text-2xl font-bold text-gray-900">Submit Lecture Record</h1>
                 </div>
                 <button
                     type="button"
@@ -127,15 +142,23 @@ export default function LectureEntryForm() {
                 </div>
 
                 <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                    {alreadySubmitted && (
+                        <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
+                            <p className="text-sm text-green-700">
+                                This DLR has already been submitted and is currently in read-only mode.
+                            </p>
+                        </div>
+                    )}
 
                     {/* Faculty Selection */}
                     <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
                         <div className="sm:col-span-2">
                             <label className="block text-sm font-medium text-gray-700">Faculty</label>
                             <select
+                                disabled={alreadySubmitted}
                                 value={formData.faculty_id}
                                 onChange={e => setFormData({ ...formData, faculty_id: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                             >
                                 <option value="">Select Faculty...</option>
                                 {facultyList.map(f => (
@@ -155,9 +178,10 @@ export default function LectureEntryForm() {
                             <input
                                 type="time"
                                 required
+                                disabled={alreadySubmitted}
                                 value={formData.actual_start_time}
                                 onChange={e => setFormData({ ...formData, actual_start_time: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                             />
                         </div>
 
@@ -166,24 +190,27 @@ export default function LectureEntryForm() {
                             <input
                                 type="time"
                                 required
+                                disabled={alreadySubmitted}
                                 value={formData.actual_end_time}
                                 onChange={e => setFormData({ ...formData, actual_end_time: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                             />
                         </div>
 
                         <div>
-                            <label className="block text-sm font-medium text-gray-700">Room No</label>
+                            <label className="block text-sm font-medium text-gray-700">Room No (e.g. E503)</label>
                             <input
                                 type="text"
                                 required
+                                placeholder="E503"
+                                disabled={alreadySubmitted}
                                 value={formData.room_no}
                                 onChange={e => setFormData({ ...formData, room_no: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                             />
                             {timetableEntry.room_no && formData.room_no && timetableEntry.room_no !== formData.room_no && (
                                 <p className="mt-1 text-xs text-red-500 font-medium">
-                                    ⚠ Room Changed (Scheduled: {timetableEntry.room_no})
+                                    ⚠ Deviated from scheduled {timetableEntry.room_no}
                                 </p>
                             )}
                         </div>
@@ -194,9 +221,10 @@ export default function LectureEntryForm() {
                                 type="number"
                                 required
                                 min="0"
+                                disabled={alreadySubmitted}
                                 value={formData.attendance_count}
                                 onChange={e => setFormData({ ...formData, attendance_count: Number(e.target.value) })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                             />
                         </div>
                     </div>
@@ -207,44 +235,72 @@ export default function LectureEntryForm() {
                         <textarea
                             rows={3}
                             required
+                            disabled={alreadySubmitted}
                             value={formData.topic_covered}
                             onChange={e => setFormData({ ...formData, topic_covered: e.target.value })}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                         />
                     </div>
 
-                    <div className="flex items-center space-x-8">
-                        <div className="relative flex items-start">
+                    <div className="flex flex-col space-y-4">
+                        <div className="relative flex items-start p-3 bg-blue-50 rounded-lg border border-blue-100">
                             <div className="flex items-center h-5">
                                 <input
                                     id="lc_status"
                                     name="lc_status"
                                     type="checkbox"
+                                    disabled={alreadySubmitted}
                                     checked={formData.lecture_capture_status}
-                                    onChange={e => setFormData({ ...formData, lecture_capture_status: e.target.checked })}
-                                    className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                    onChange={e => {
+                                        const val = e.target.checked;
+                                        setFormData({
+                                            ...formData,
+                                            lecture_capture_status: val,
+                                            smart_board_pdf_status: val ? formData.smart_board_pdf_status : false
+                                        });
+                                    }}
+                                    className="focus:ring-blue-500 h-5 w-5 text-blue-600 border-gray-300 rounded"
                                 />
                             </div>
                             <div className="ml-3 text-sm">
-                                <label htmlFor="lc_status" className="font-medium text-gray-700">Lecture Captured</label>
-                                <p className="text-gray-500">Video recorded & uploaded to LMS?</p>
+                                <label htmlFor="lc_status" className="font-bold text-blue-900 uppercase tracking-tight">Lecture Capture (L.C.)</label>
+                                <p className="text-blue-600 text-xs">Includes specialized audio + digital board recording.</p>
                             </div>
                         </div>
 
-                        <div className="relative flex items-start">
-                            <div className="flex items-center h-5">
-                                <input
-                                    id="sb_status"
-                                    name="sb_status"
-                                    type="checkbox"
-                                    checked={formData.smart_board_pdf_status}
-                                    onChange={e => setFormData({ ...formData, smart_board_pdf_status: e.target.checked })}
-                                    className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded"
-                                />
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                            <div className="relative flex items-start p-3 bg-gray-50 rounded-lg border border-gray-200">
+                                <div className="flex items-center h-5">
+                                    <input
+                                        id="mic_used"
+                                        type="checkbox"
+                                        disabled={true}
+                                        checked={true}
+                                        className="h-4 w-4 text-gray-400 border-gray-300 rounded cursor-not-allowed"
+                                    />
+                                </div>
+                                <div className="ml-3 text-sm">
+                                    <label className="font-medium text-gray-700">Mic Used</label>
+                                    <p className="text-gray-500 text-[10px]">Mandatory for Lecture Capture.</p>
+                                </div>
                             </div>
-                            <div className="ml-3 text-sm">
-                                <label htmlFor="sb_status" className="font-medium text-gray-700">Smart Board PDF</label>
-                                <p className="text-gray-500">Board notes exported & saved?</p>
+
+                            <div className={`relative flex items-start p-3 rounded-lg border transition-all ${!formData.lecture_capture_status ? 'bg-gray-100 border-gray-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
+                                <div className="flex items-center h-5">
+                                    <input
+                                        id="sb_status"
+                                        name="sb_status"
+                                        type="checkbox"
+                                        disabled={alreadySubmitted || !formData.lecture_capture_status}
+                                        checked={formData.smart_board_pdf_status}
+                                        onChange={e => setFormData({ ...formData, smart_board_pdf_status: e.target.checked })}
+                                        className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded"
+                                    />
+                                </div>
+                                <div className="ml-3 text-sm">
+                                    <label htmlFor="sb_status" className="font-medium text-gray-700">LMS Upload</label>
+                                    <p className="text-gray-500 text-[10px]">Content synced to student portal?</p>
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -253,22 +309,25 @@ export default function LectureEntryForm() {
                         <label className="block text-sm font-medium text-gray-700">Remarks (Optional)</label>
                         <textarea
                             rows={2}
+                            disabled={alreadySubmitted}
                             value={formData.remarks}
                             onChange={e => setFormData({ ...formData, remarks: e.target.value })}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm"
+                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
                             placeholder="Any deviations from schedule..."
                         />
                     </div>
 
-                    <div className="pt-5 flex justify-end">
-                        <button
-                            type="submit"
-                            disabled={submitting}
-                            className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
-                        >
-                            {submitting ? 'Submitting...' : 'Submit Record'}
-                        </button>
-                    </div>
+                    {!alreadySubmitted && (
+                        <div className="pt-5 flex justify-end">
+                            <button
+                                type="submit"
+                                disabled={submitting}
+                                className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                            >
+                                {submitting ? 'Submitting...' : 'Submit Record'}
+                            </button>
+                        </div>
+                    )}
                 </form>
             </div>
         </div>

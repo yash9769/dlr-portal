@@ -19,8 +19,25 @@ export const parseExcelTimetable = async (file) => {
                 const workbook = read(data, { type: 'array' });
                 const firstSheetName = workbook.SheetNames[0];
                 const worksheet = workbook.Sheets[firstSheetName];
-                const jsonData = utils.sheet_to_json(worksheet);
-                resolve(jsonData);
+
+                // Get headers (first row)
+                const jsonData = utils.sheet_to_json(worksheet, { header: 1 });
+                const headers = jsonData[0] || [];
+
+                const requiredHeaders = [
+                    'Day', 'Start Time', 'End Time', 'Subject',
+                    'Subject Type', 'Faculty', 'Room',
+                    'Semester', 'Division', 'Batch Strength'
+                ];
+
+                const missing = requiredHeaders.filter(h => !headers.includes(h));
+
+                if (missing.length > 0) {
+                    throw new Error(`Invalid Excel Structure. Column "${missing[0]}" missing.`);
+                }
+
+                // Return data as objects (re-parsing with headers)
+                resolve(utils.sheet_to_json(worksheet));
             } catch (error) {
                 reject(error);
             }
@@ -96,25 +113,20 @@ export const mapToTimetableSchema = (rawData, facultyList) => {
     }
 
     return rawData.map(row => {
-        const findValue = (keys) => {
-            const key = Object.keys(row).find(k => keys.includes(k.toLowerCase().trim()));
-            return key ? row[key] : null;
-        };
-
-        const facultyName = findValue(['faculty', 'instructor', 'teacher', 'faculty name']);
+        const facultyName = row['Faculty'];
         const faculty = facultyList.find(f => f.name.toLowerCase().includes(facultyName?.toLowerCase() || ''));
 
         return {
-            semester: findValue(['semester', 'sem']) || 'VI',
-            division: findValue(['division', 'div', 'section']) || 'A',
-            subject_name: findValue(['subject', 'course', 'subject name']) || '',
-            subject_type: findValue(['type', 'subject type']) || 'IT',
-            day_of_week: findValue(['day', 'day of week']) || 'Monday',
-            start_time: formatTime(findValue(['start', 'start time', 'from'])),
-            end_time: formatTime(findValue(['end', 'end time', 'to'])),
-            room_no: String(findValue(['room', 'room no', 'classroom']) || ''),
+            semester: row['Semester'] || 'VI',
+            division: row['Division'] || 'A',
+            subject_name: row['Subject'] || '',
+            subject_type: row['Subject Type'] || 'IT',
+            day_of_week: row['Day'] || 'Monday',
+            start_time: formatTime(row['Start Time']),
+            end_time: formatTime(row['End Time']),
+            room_no: String(row['Room'] || ''),
             assigned_faculty_id: faculty ? faculty.id : null,
-            batch_strength: parseInt(findValue(['strength', 'batch strength'])) || 60
+            batch_strength: parseInt(row['Batch Strength']) || 60
         };
     }).filter(item => item.subject_name && item.day_of_week);
 };

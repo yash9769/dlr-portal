@@ -113,7 +113,7 @@ export const api = {
                 .select(`
                     *,
                     actual_faculty:faculty(name),
-                    schedule:timetable(subject_name, semester, division)
+                    schedule:timetable(subject_name, semester, division, assigned_faculty_id, room_no)
                 `)
                 .order('date', { ascending: false })
                 .order('created_at', { ascending: false });
@@ -133,11 +133,31 @@ export const api = {
 
             const { data: records, error: rError } = await supabase
                 .from('daily_lecture_records')
-                .select(`*, actual_faculty:faculty(*)`)
+                .select(`
+                    *,
+                    actual_faculty:faculty(*),
+                    schedule:timetable(subject_name, semester, division)
+                `)
                 .eq('date', date);
             if (rError) throw rError;
 
             return { schedule: schedule || [], records: records || [] };
+        },
+        approveReport: async (date, approvedBy, approvedById) => {
+            const { data, error } = await supabase
+                .from('report_approvals')
+                .upsert({ date, approved_by: approvedBy, approved_by_id: approvedById });
+            if (error) throw error;
+            return { data };
+        },
+        getApprovalStatus: async (date) => {
+            const { data, error } = await supabase
+                .from('report_approvals')
+                .select('*')
+                .eq('date', date)
+                .maybeSingle();
+            if (error) return { data: null };
+            return { data };
         }
     }
 };
