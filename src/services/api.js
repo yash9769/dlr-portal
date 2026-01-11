@@ -120,6 +120,18 @@ export const api = {
             if (error) throw error;
             return { data };
         },
+        listSubmissions: async () => {
+            const { data, error } = await supabase
+                .from('daily_lecture_records')
+                .select(`
+                    *,
+                    actual_faculty:faculty(name),
+                    schedule:timetable(subject_name, semester, division, assigned_faculty_id, room_no)
+                `)
+                .order('date', { ascending: false });
+            if (error) throw error;
+            return { data };
+        },
         getReportData: async (date) => {
             // Fix: Use local date construction to avoid timezone shifts
             const [y, m, d] = date.split('-').map(Number);

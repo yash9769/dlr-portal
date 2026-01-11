@@ -20,10 +20,12 @@ export default function Layout() {
 
     const navigation = [
         { name: 'Dashboard', href: '/', icon: Home, current: location.pathname === '/' },
+        { name: 'Audit History', href: '/history', icon: FileText, current: location.pathname === '/history' },
         { name: 'Teaching Timetable', href: '/schedule', icon: Calendar, current: location.pathname === '/schedule' },
         { name: 'Department Reports', href: '/reports', icon: FileText, current: location.pathname === '/reports' },
         { name: 'Timetable Setup', href: '/timetable', icon: Settings, current: location.pathname === '/timetable', adminOnly: true },
         { name: 'Faculty Master', href: '/faculty', icon: User, current: location.pathname === '/faculty', adminOnly: true },
+        { name: 'My Profile', href: '/profile', icon: User, current: location.pathname === '/profile' },
     ];
 
     const role = user?.role?.toLowerCase() || '';

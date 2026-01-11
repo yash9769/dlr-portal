@@ -31,7 +31,7 @@ export default function Schedule() {
     }, [user]);
 
     // Group by day mock helper
-    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'];
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const groupedSchedule = days.map(day => ({
         day,
         lectures: schedule.filter(s => s.day_of_week === day).sort((a, b) => a.start_time.localeCompare(b.start_time))

@@ -8,7 +8,7 @@ TRUNCATE faculty CASCADE;
 
 -- 2. Insert Faculty based on Page 5 of PDF
 INSERT INTO faculty (id, name, designation, department, email) VALUES
-('00000000-0000-0000-0000-000000000001', 'Prof. Ajitkumar Khachane', 'Assistant Professor', 'IT', 'ark@vit.edu'),
+('00000000-0000-0000-0000-000000000001', 'Prof. Ajitkumar Khachane', 'Assistant Professor', 'IT', 'ark@vit.edu.in'),
 ('00000000-0000-0000-0000-000000000002', 'Prof. Akshay Loke', 'Assistant Professor', 'IT', 'avl@vit.edu'),
 ('00000000-0000-0000-0000-000000000003', 'Prof. Aniket Kundu', 'Assistant Professor', 'IT', 'ak@vit.edu'),
 ('00000000-0000-0000-0000-000000000004', 'Prof. Bhanu Tekwani', 'Assistant Professor', 'IT', 'bgt@vit.edu'),

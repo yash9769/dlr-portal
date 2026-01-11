@@ -2,7 +2,7 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { Save, ArrowLeft, Users } from 'lucide-react';
+import { Save, ArrowLeft, Users, Clock, MapPin, CheckCircle2, Mic, BookOpen, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function LectureEntryForm() {
@@ -47,7 +47,7 @@ export default function LectureEntryForm() {
                     }));
                 }
 
-                // 2. Check if already submitted for today
+                // 2. Check if already submitted (for any date, but usually today)
                 const today = new Date().toISOString().split('T')[0];
                 const { records } = await api.dlr.getReportData(today);
                 const existing = records.find(r => r.timetable_id === id);
@@ -74,7 +74,6 @@ export default function LectureEntryForm() {
         loadData();
     }, [id]);
 
-    // "Same Faculty" Logic
     const handleSameFaculty = () => {
         if (!timetableEntry) return;
         setFormData(prev => ({
@@ -95,237 +94,242 @@ export default function LectureEntryForm() {
         try {
             await api.dlr.submit({
                 timetable_id: id,
-                ...formData,
-                submitted_by: user?.id
+                actual_start_time: formData.actual_start_time,
+                actual_end_time: formData.actual_end_time,
+                room_no: formData.room_no,
+                faculty_id: formData.faculty_id,
+                attendance_count: parseInt(formData.attendance_count) || 0,
+                topic_covered: formData.topic_covered,
+                lecture_capture_status: formData.lecture_capture_status,
+                smart_board_pdf_status: formData.smart_board_pdf_status,
+                remarks: formData.remarks,
+                submitted_by: user?.id,
+                date: new Date().toISOString().split('T')[0] // Always submit for today
             });
 
-            toast.success('Lecture Record Submitted Successfully!');
+            toast.success('Audit Record Submitted!');
             navigate('/');
         } catch (error) {
             console.error(error);
-            toast.error('Failed to submit record');
+            toast.error('Submission failed. Room might be double-booked.');
         } finally {
             setSubmitting(false);
         }
     };
 
-    if (loading) return <div>Loading...</div>;
-    if (!timetableEntry) return <div>Lecture not found</div>;
+    if (loading) return (
+        <div className="flex items-center justify-center min-h-screen">
+            <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-100 border-t-blue-600"></div>
+        </div>
+    );
+
+    if (!timetableEntry) return <div className="p-10 text-center font-bold">Lecture not found</div>;
 
     return (
-        <div className="max-w-3xl mx-auto px-4 py-8">
-            <div className="mb-6 flex items-center justify-between">
-                <div className="flex items-center">
-                    <button onClick={() => navigate('/')} className="mr-4 text-gray-500 hover:text-gray-700">
-                        <ArrowLeft className="h-6 w-6" />
-                    </button>
-                    <h1 className="text-2xl font-bold text-gray-900">Submit Lecture Record</h1>
-                </div>
-                <button
-                    type="button"
-                    onClick={handleSameFaculty}
-                    className="inline-flex items-center px-3 py-2 border border-blue-300 shadow-sm text-sm leading-4 font-medium rounded-md text-blue-700 bg-blue-50 hover:bg-blue-100 focus:outline-none"
-                >
-                    <Users className="mr-2 h-4 w-4" />
-                    Same as Scheduled
+        <div className="min-h-screen bg-gray-50 pb-20">
+            {/* Mobile Header */}
+            <div className="bg-white border-b border-gray-100 px-4 py-4 sticky top-0 z-30 flex items-center justify-between">
+                <button onClick={() => navigate('/')} className="p-2 hover:bg-gray-50 rounded-xl transition-colors">
+                    <ArrowLeft className="h-6 w-6 text-gray-900" />
                 </button>
+                <h1 className="text-lg font-black text-gray-900 uppercase tracking-tight">Audit Session</h1>
+                <div className="w-10"></div> {/* Spacer */}
             </div>
 
-            <div className="bg-white shadow rounded-lg overflow-hidden">
-                <div className="px-6 py-4 bg-gray-50 border-b border-gray-200">
-                    <h3 className="text-lg font-medium text-gray-900">
-                        {timetableEntry.subject_name} ({timetableEntry.subject_type})
-                    </h3>
-                    <p className="text-sm text-gray-500">
-                        {timetableEntry.semester} - {timetableEntry.division} | {timetableEntry.day_of_week}
-                    </p>
+            <div className="max-w-xl mx-auto px-4 mt-6">
+                {/* Session Summary Card */}
+                <div className="bg-blue-600 rounded-3xl p-6 text-white shadow-xl shadow-blue-100 mb-6">
+                    <div className="flex justify-between items-start mb-4">
+                        <span className="px-3 py-1 bg-white/20 rounded-full text-[10px] font-black uppercase tracking-widest border border-white/20">
+                            {timetableEntry.subject_type || 'Lecture'}
+                        </span>
+                        <div className="text-right">
+                            <p className="text-[10px] font-bold text-blue-200 uppercase tracking-widest">Scheduled Slot</p>
+                            <p className="text-sm font-black">{timetableEntry.start_time?.slice(0, 5)} - {timetableEntry.end_time?.slice(0, 5)}</p>
+                        </div>
+                    </div>
+                    <h2 className="text-2xl font-black tracking-tight mb-2">{timetableEntry.subject_name}</h2>
+                    <div className="flex items-center gap-4 text-sm font-medium opacity-90">
+                        <span className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {timetableEntry.room_no}</span>
+                        <span className="opacity-40">|</span>
+                        <span>Sem {timetableEntry.semester} - {timetableEntry.division}</span>
+                    </div>
                 </div>
 
-                <form onSubmit={handleSubmit} className="p-6 space-y-6">
+                <form onSubmit={handleSubmit} className="space-y-6">
                     {alreadySubmitted && (
-                        <div className="bg-green-50 border-l-4 border-green-400 p-4 mb-4">
-                            <p className="text-sm text-green-700">
-                                This DLR has already been submitted and is currently in read-only mode.
-                            </p>
+                        <div className="p-4 bg-green-50 border border-green-200 rounded-2xl flex items-center gap-3">
+                            <CheckCircle2 className="h-5 w-5 text-green-600" />
+                            <p className="text-sm font-bold text-green-800">This record is already in the official audit.</p>
                         </div>
                     )}
 
-                    {/* Faculty Selection */}
-                    <div className="grid grid-cols-1 gap-y-6 gap-x-4 sm:grid-cols-2">
-                        <div className="sm:col-span-2">
-                            <label className="block text-sm font-medium text-gray-700">Faculty</label>
-                            <select
-                                disabled={alreadySubmitted}
-                                value={formData.faculty_id}
-                                onChange={e => setFormData({ ...formData, faculty_id: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
-                            >
-                                <option value="">Select Faculty...</option>
-                                {facultyList.map(f => (
-                                    <option key={f.id} value={f.id}>{f.name} ({f.department})</option>
-                                ))}
-                            </select>
-                            {/* Validation / Highlight: Check if selected ID != scheduled ID */}
-                            {timetableEntry.assigned_faculty_id && formData.faculty_id && timetableEntry.assigned_faculty_id !== formData.faculty_id && (
-                                <p className="mt-2 text-sm text-yellow-600 bg-yellow-50 p-2 rounded border border-yellow-200">
-                                    ⚠ <strong>Faculty Change Detected</strong>: You are marking a substitution.
-                                </p>
-                            )}
-                        </div>
+                    {/* Faculty Section */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-4 flex items-center gap-2">
+                            <Users className="h-3.5 w-3.5 text-blue-500" /> Session Conducted By
+                        </h3>
+                        <select
+                            disabled={alreadySubmitted}
+                            value={formData.faculty_id}
+                            onChange={e => setFormData({ ...formData, faculty_id: e.target.value })}
+                            className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50"
+                        >
+                            <option value="">Select Faculty...</option>
+                            {facultyList.map(f => (
+                                <option key={f.id} value={f.id}>{f.name}</option>
+                            ))}
+                        </select>
 
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Start Time</label>
-                            <input
-                                type="time"
-                                required
-                                disabled={alreadySubmitted}
-                                value={formData.actual_start_time}
-                                onChange={e => setFormData({ ...formData, actual_start_time: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">End Time</label>
-                            <input
-                                type="time"
-                                required
-                                disabled={alreadySubmitted}
-                                value={formData.actual_end_time}
-                                onChange={e => setFormData({ ...formData, actual_end_time: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
-                            />
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Room No (e.g. E503)</label>
-                            <input
-                                type="text"
-                                required
-                                placeholder="E503"
-                                disabled={alreadySubmitted}
-                                value={formData.room_no}
-                                onChange={e => setFormData({ ...formData, room_no: e.target.value })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
-                            />
-                            {timetableEntry.room_no && formData.room_no && timetableEntry.room_no !== formData.room_no && (
-                                <p className="mt-1 text-xs text-red-500 font-medium">
-                                    ⚠ Deviated from scheduled {timetableEntry.room_no}
-                                </p>
-                            )}
-                        </div>
-
-                        <div>
-                            <label className="block text-sm font-medium text-gray-700">Attendance Count</label>
-                            <input
-                                type="number"
-                                required
-                                min="0"
-                                disabled={alreadySubmitted}
-                                value={formData.attendance_count}
-                                onChange={e => setFormData({ ...formData, attendance_count: Number(e.target.value) })}
-                                className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
-                            />
-                        </div>
+                        <button
+                            type="button"
+                            onClick={handleSameFaculty}
+                            className="mt-4 w-full text-[10px] font-black text-blue-600 uppercase tracking-widest bg-blue-50 py-2 rounded-xl border border-blue-100 hover:bg-blue-100 transition-colors"
+                        >
+                            Assigned Faculty (Reset)
+                        </button>
                     </div>
 
-                    {/* Section 2: Content & Validation */}
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Topic Covered</label>
+                    {/* Attendance & Content */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <div className="grid grid-cols-2 gap-4 mb-6">
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Headcount</label>
+                                <input
+                                    type="number"
+                                    required
+                                    placeholder="0"
+                                    disabled={alreadySubmitted}
+                                    value={formData.attendance_count}
+                                    onChange={e => setFormData({ ...formData, attendance_count: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-lg font-black text-gray-900 focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Actual Room</label>
+                                <input
+                                    type="text"
+                                    required
+                                    placeholder="Room No"
+                                    disabled={alreadySubmitted}
+                                    value={formData.room_no}
+                                    onChange={e => setFormData({ ...formData, room_no: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-lg font-black text-gray-900 focus:ring-2 focus:ring-blue-500 uppercase"
+                                />
+                            </div>
+                        </div>
+
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block flex items-center gap-2">
+                            <BookOpen className="h-3.5 w-3.5 text-blue-500" /> Topics Covered
+                        </label>
                         <textarea
                             rows={3}
                             required
+                            placeholder="Write brief topics..."
                             disabled={alreadySubmitted}
                             value={formData.topic_covered}
                             onChange={e => setFormData({ ...formData, topic_covered: e.target.value })}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
+                            className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 mb-4"
                         />
+
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Audit Start</label>
+                                <input
+                                    type="time"
+                                    required
+                                    disabled={alreadySubmitted}
+                                    value={formData.actual_start_time}
+                                    onChange={e => setFormData({ ...formData, actual_start_time: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-black text-gray-900 focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Audit End</label>
+                                <input
+                                    type="time"
+                                    required
+                                    disabled={alreadySubmitted}
+                                    value={formData.actual_end_time}
+                                    onChange={e => setFormData({ ...formData, actual_end_time: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-black text-gray-900 focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
                     </div>
 
-                    <div className="flex flex-col space-y-4">
-                        <div className="relative flex items-start p-3 bg-blue-50 rounded-lg border border-blue-100">
-                            <div className="flex items-center h-5">
+                    {/* Lecture Capture Toggles */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <Mic className="h-3.5 w-3.5 text-blue-500" /> Lecture Capture Audit
+                        </h3>
+
+                        <div className="space-y-4">
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer ${formData.lecture_capture_status ? 'bg-blue-50 border-blue-200 shadow-md shadow-blue-50' : 'bg-gray-50 border-gray-100'}`}>
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-xl ${formData.lecture_capture_status ? 'bg-blue-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                                        <Mic className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-900">L.C. Enabled</p>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Video + Audio Record</p>
+                                    </div>
+                                </div>
                                 <input
-                                    id="lc_status"
-                                    name="lc_status"
                                     type="checkbox"
                                     disabled={alreadySubmitted}
                                     checked={formData.lecture_capture_status}
-                                    onChange={e => {
-                                        const val = e.target.checked;
-                                        setFormData({
-                                            ...formData,
-                                            lecture_capture_status: val,
-                                            smart_board_pdf_status: val ? formData.smart_board_pdf_status : false
-                                        });
-                                    }}
-                                    className="focus:ring-blue-500 h-5 w-5 text-blue-600 border-gray-300 rounded"
+                                    onChange={e => setFormData({ ...formData, lecture_capture_status: e.target.checked })}
+                                    className="h-6 w-6 rounded-lg text-blue-600 focus:ring-blue-500 border-gray-200"
                                 />
-                            </div>
-                            <div className="ml-3 text-sm">
-                                <label htmlFor="lc_status" className="font-bold text-blue-900 uppercase tracking-tight">Lecture Capture (L.C.)</label>
-                                <p className="text-blue-600 text-xs">Includes specialized audio + digital board recording.</p>
-                            </div>
-                        </div>
+                            </label>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                            <div className="relative flex items-start p-3 bg-gray-50 rounded-lg border border-gray-200">
-                                <div className="flex items-center h-5">
-                                    <input
-                                        id="mic_used"
-                                        type="checkbox"
-                                        disabled={true}
-                                        checked={true}
-                                        className="h-4 w-4 text-gray-400 border-gray-300 rounded cursor-not-allowed"
-                                    />
+                            <label className={`flex items-center justify-between p-4 rounded-2xl border transition-all cursor-pointer ${formData.smart_board_pdf_status ? 'bg-green-50 border-green-200 shadow-md shadow-green-50' : 'bg-gray-50 border-gray-100'}`}>
+                                <div className="flex items-center gap-4">
+                                    <div className={`p-2 rounded-xl ${formData.smart_board_pdf_status ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-400'}`}>
+                                        <CheckCircle2 className="h-5 w-5" />
+                                    </div>
+                                    <div>
+                                        <p className="text-sm font-bold text-gray-900">PDF Uploaded</p>
+                                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Published on V-Refer</p>
+                                    </div>
                                 </div>
-                                <div className="ml-3 text-sm">
-                                    <label className="font-medium text-gray-700">Mic Used</label>
-                                    <p className="text-gray-500 text-[10px]">Mandatory for Lecture Capture.</p>
-                                </div>
-                            </div>
-
-                            <div className={`relative flex items-start p-3 rounded-lg border transition-all ${!formData.lecture_capture_status ? 'bg-gray-100 border-gray-200 opacity-60' : 'bg-green-50 border-green-200'}`}>
-                                <div className="flex items-center h-5">
-                                    <input
-                                        id="sb_status"
-                                        name="sb_status"
-                                        type="checkbox"
-                                        disabled={alreadySubmitted || !formData.lecture_capture_status}
-                                        checked={formData.smart_board_pdf_status}
-                                        onChange={e => setFormData({ ...formData, smart_board_pdf_status: e.target.checked })}
-                                        className="focus:ring-blue-500 h-4 w-4 text-blue-600 border-gray-300 rounded"
-                                    />
-                                </div>
-                                <div className="ml-3 text-sm">
-                                    <label htmlFor="sb_status" className="font-medium text-gray-700">LMS Upload</label>
-                                    <p className="text-gray-500 text-[10px]">Content synced to student portal?</p>
-                                </div>
-                            </div>
+                                <input
+                                    type="checkbox"
+                                    disabled={alreadySubmitted || !formData.lecture_capture_status}
+                                    checked={formData.smart_board_pdf_status}
+                                    onChange={e => setFormData({ ...formData, smart_board_pdf_status: e.target.checked })}
+                                    className="h-6 w-6 rounded-lg text-green-600 focus:ring-green-500 border-gray-200"
+                                />
+                            </label>
                         </div>
                     </div>
 
-                    <div>
-                        <label className="block text-sm font-medium text-gray-700">Remarks (Optional)</label>
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Remarks</label>
                         <textarea
                             rows={2}
+                            placeholder="Optional notes..."
                             disabled={alreadySubmitted}
                             value={formData.remarks}
                             onChange={e => setFormData({ ...formData, remarks: e.target.value })}
-                            className="mt-1 block w-full border border-gray-300 rounded-md shadow-sm py-2 px-3 focus:outline-none focus:ring-blue-500 focus:border-blue-500 sm:text-sm disabled:bg-gray-50"
-                            placeholder="Any deviations from schedule..."
+                            className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
 
                     {!alreadySubmitted && (
-                        <div className="pt-5 flex justify-end">
+                        <div className="pt-4">
                             <button
                                 type="submit"
                                 disabled={submitting}
-                                className="ml-3 inline-flex justify-center py-2 px-4 border border-transparent shadow-sm text-sm font-medium rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50"
+                                className="w-full bg-blue-600 text-white font-black text-sm uppercase tracking-widest py-5 rounded-3xl shadow-2xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
                             >
-                                {submitting ? 'Submitting...' : 'Submit Record'}
+                                <Save className="h-5 w-5" />
+                                {submitting ? 'Authenticating Audit...' : 'Submit Session Audit'}
                             </button>
+                            <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-6">
+                                Securing transmission with academic audit server...
+                            </p>
                         </div>
                     )}
                 </form>

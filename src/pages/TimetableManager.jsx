@@ -275,7 +275,7 @@ export default function TimetableManager() {
                             value={newEntry.day_of_week}
                             onChange={e => setNewEntry({ ...newEntry, day_of_week: e.target.value })}
                         >
-                            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday'].map(d => <option key={d}>{d}</option>)}
+                            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => <option key={d}>{d}</option>)}
                         </select>
                     </div>
                     <div className="col-span-1">

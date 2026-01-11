@@ -5,7 +5,7 @@ import { format } from 'date-fns';
  * Generates the official VIT DLR Excel template for a specific date.
  * Exactly matched to image: uploaded_image_1768043717997.png
  */
-export const generateDLRExcel = (date, timetableEntries, facultyMapping) => {
+export const generateDLRExcel = (date, timetableEntries, facultyMapping, auditRecords = []) => {
     const dayName = format(date, 'EEEE');
     const dateStr = format(date, 'dd/MM/yyyy').replace(/\//g, '/');
 
@@ -59,8 +59,11 @@ export const generateDLRExcel = (date, timetableEntries, facultyMapping) => {
     ];
 
     const dlrRows = timetableEntries.map(entry => {
-        const profInitials = getProfInitials(entry.assigned_faculty_id);
+        const profInitialsScheduled = getProfInitials(entry.assigned_faculty_id);
         const isLCS = entry.room_no.startsWith('E') || entry.room_no.startsWith('F');
+
+        // MATCH WITH AUDIT RECORD
+        const audit = auditRecords.find(r => r.timetable_id === entry.id);
 
         return [
             entry.semester,
@@ -69,18 +72,19 @@ export const generateDLRExcel = (date, timetableEntries, facultyMapping) => {
             entry.subject_name + (entry.subject_type === 'Practical' ? ' (/)' : ''),
             entry.start_time.slice(0, 5).replace(':', '.'),
             entry.end_time.slice(0, 5).replace(':', '.'),
-            profInitials,
+            profInitialsScheduled,
             entry.room_no,
-            entry.start_time.slice(0, 5).replace(':', '.'), // Default Actual
-            entry.end_time.slice(0, 5).replace(':', '.'),   // Default Actual
-            profInitials,                                  // Default Actual
-            '', // Attendance (Blank)
-            isLCS ? 'Y' : '', // LC Default
-            '-', // SB PDF
+            // ACTUALS (from audit record if exists)
+            audit ? audit.actual_start_time.slice(0, 5).replace(':', '.') : entry.start_time.slice(0, 5).replace(':', '.'),
+            audit ? audit.actual_end_time.slice(0, 5).replace(':', '.') : entry.end_time.slice(0, 5).replace(':', '.'),
+            audit ? getProfInitials(audit.faculty_id) : profInitialsScheduled,
+            audit ? (audit.attendance_count || '0') : '', // Attendance
+            audit ? (audit.lecture_capture_status ? 'Y' : 'N') : (isLCS ? 'Y' : ''), // LC Actual
+            audit ? (audit.smart_board_pdf_status ? 'Y' : 'N') : '-', // SB PDF
             '-', // Collected
             '-', // Given
             '-', // Graded
-            ''  // Remarks
+            audit ? (audit.remarks || '') : ''  // Remarks
         ];
     });
 
@@ -182,22 +186,23 @@ export const generateDLRExcel = (date, timetableEntries, facultyMapping) => {
 
     const lcEntries = timetableEntries.filter(e => e.room_no.startsWith('E') || e.room_no.startsWith('F'));
     const lcRows = lcEntries.map((entry, idx) => {
-        const profInitials = getProfInitials(entry.assigned_faculty_id);
+        const audit = auditRecords.find(r => r.timetable_id === entry.id);
+        const profInitials = audit ? getProfInitials(audit.faculty_id) : getProfInitials(entry.assigned_faculty_id);
         const yearCode = getYearFromSem(entry.semester);
 
         return [
-            entry.room_no,
+            audit ? audit.room_no : entry.room_no,
             idx + 1,
-            entry.start_time.slice(0, 5),
-            entry.end_time.slice(0, 5),
+            audit ? audit.actual_start_time.slice(0, 5) : entry.start_time.slice(0, 5),
+            audit ? audit.actual_end_time.slice(0, 5) : entry.end_time.slice(0, 5),
             `${yearCode} DIV ${entry.division}`,
             '2025-26',
             entry.subject_name,
             profInitials,
-            'Yes',
+            audit ? (audit.lecture_capture_status ? 'Yes' : 'No') : 'Pending',
             '',
-            'Pending',
-            ''
+            audit ? (audit.smart_board_pdf_status ? 'Uploaded' : 'Pending') : 'Pending',
+            audit ? (audit.remarks || '') : ''
         ];
     });
 

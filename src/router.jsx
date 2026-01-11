@@ -8,6 +8,8 @@ import Schedule from './pages/Schedule';
 import FacultyList from './pages/FacultyList';
 import Reports from './pages/Reports';
 import TimetableManager from './pages/TimetableManager';
+import Profile from './pages/Profile';
+import SubmissionHistory from './pages/SubmissionHistory';
 
 export default function AppRouter() {
     return (
@@ -21,6 +23,8 @@ export default function AppRouter() {
                 <Route path="/faculty" element={<FacultyList />} />
                 <Route path="/reports" element={<Reports />} />
                 <Route path="/timetable" element={<TimetableManager />} />
+                <Route path="/profile" element={<Profile />} />
+                <Route path="/history" element={<SubmissionHistory />} />
                 <Route path="*" element={<Navigate to="/" replace />} />
             </Route>
         </Routes>

@@ -97,9 +97,9 @@ export default function Reports() {
     const handleExcelDownload = async () => {
         setLoading(true);
         try {
-            const { schedule } = await api.dlr.getReportData(selectedDate);
+            const { schedule, records } = await api.dlr.getReportData(selectedDate);
             const { data: faculty } = await api.faculty.list();
-            generateDLRExcel(new Date(selectedDate), schedule, faculty || []);
+            generateDLRExcel(new Date(selectedDate), schedule, faculty || [], records || []);
         } catch (err) {
             console.error(err);
             alert('Failed to generate Excel template');
