@@ -1,12 +1,25 @@
 import * as XLSX from 'xlsx';
 import { format } from 'date-fns';
 import { FAKE_STUDENTS } from '../utils/studentData';
+import { downloadFile } from '../utils/fileDownloader';
+
+/**
+ * Helper to save workbook
+ */
+const saveWorkbook = async (wb, filename) => {
+    // Generate buffer
+    const wbout = XLSX.write(wb, { bookType: 'xlsx', type: 'array' });
+    // Create blob
+    const blob = new Blob([wbout], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    // Use universal downloader
+    await downloadFile(blob, filename, 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+};
 
 /**
  * Generates the official VIT DLR Excel template for a specific date.
  * Exactly matched to image: uploaded_image_1768043717997.png
  */
-export const generateDLRExcel = (date, timetableEntries, facultyMapping, auditRecords = []) => {
+export const generateDLRExcel = async (date, timetableEntries, facultyMapping, auditRecords = []) => {
     const dayName = format(date, 'EEEE');
     const dateStr = format(date, 'dd/MM/yyyy').replace(/\//g, '/');
 
@@ -82,9 +95,9 @@ export const generateDLRExcel = (date, timetableEntries, facultyMapping, auditRe
             audit ? (audit.attendance_count || '0') : '', // Attendance
             audit ? (audit.lecture_capture_status ? 'Y' : 'N') : (isLCS ? 'Y' : ''), // LC Actual
             audit ? (audit.smart_board_pdf_status ? 'Y' : 'N') : '-', // SB PDF
-            '-', // Collected
-            '-', // Given
-            '-', // Graded
+            audit ? (audit.assignments_collected_last_week || '-') : '-', // Collected
+            audit ? (audit.assignments_given_coming_week || '-') : '-', // Given
+            audit ? (audit.assignments_graded_previous_week || '-') : '-', // Graded
             audit ? (audit.remarks || '') : ''  // Remarks
         ];
     });
@@ -231,14 +244,15 @@ export const generateDLRExcel = (date, timetableEntries, facultyMapping, auditRe
     XLSX.utils.book_append_sheet(wb, ws2, 'Tracking of LC');
 
     // --- DOWNLOAD ---
-    XLSX.writeFile(wb, `DLR_IT_${format(date, 'dd-MM-yyyy')}.xlsx`);
+    // XLSX.writeFile(wb, `DLR_IT_${format(date, 'dd-MM-yyyy')}.xlsx`);
+    await saveWorkbook(wb, `DLR_IT_${format(date, 'dd-MM-yyyy')}.xlsx`);
 };
 
 /**
  * Generates a detailed Student Attendance Excel sheet.
  * Tries to pull individual student data from LocalStorage if available.
  */
-export const generateStudentAttendanceExcel = (date, schedule, records) => {
+export const generateStudentAttendanceExcel = async (date, schedule, records) => {
     const dateStr = format(date, 'yyyy-MM-dd');
     const displayDate = format(date, 'dd-MM-yyyy');
 
@@ -313,7 +327,7 @@ export const generateStudentAttendanceExcel = (date, schedule, records) => {
 
         const studentHeader = ['Roll No', 'Student Name', 'Status', 'Timestamp'];
         const studentRows = FAKE_STUDENTS.map(student => {
-            const isPresent = isDataAvailable ? presentIds.has(student.id) : false; // Default to Absent if no data
+            const isPresent = isDataAvailable ? presentIds.has(student.id) : false; // Default to Absent if no data 
 
             let status = 'Absent';
             if (isDataAvailable) {
@@ -325,9 +339,6 @@ export const generateStudentAttendanceExcel = (date, schedule, records) => {
             }
 
             return [
-                student.roll,
-                student.name,
-                status,
                 student.roll,
                 student.name,
                 status,
@@ -360,5 +371,5 @@ export const generateStudentAttendanceExcel = (date, schedule, records) => {
     ]);
     XLSX.utils.book_append_sheet(wb, wsSummary, 'Summary');
 
-    XLSX.writeFile(wb, `Student_Attendance_${displayDate}.xlsx`);
+    await saveWorkbook(wb, `Student_Attendance_${displayDate}.xlsx`);
 };
