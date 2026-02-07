@@ -2,7 +2,6 @@ import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
-import { FAKE_STUDENTS } from '../utils/studentData';
 import { Save, ArrowLeft, Users, Clock, MapPin, CheckCircle2, Mic, BookOpen, AlertCircle } from 'lucide-react';
 import toast from 'react-hot-toast';
 
@@ -25,12 +24,15 @@ export default function LectureEntryForm() {
         topic_covered: '',
         lecture_capture_status: false,
         smart_board_pdf_status: false,
-        smart_board_pdf_status: false,
         remarks: '',
+        assignments_collected_last_week: '',
+        assignments_given_coming_week: '',
+        assignments_graded_previous_week: '',
         student_attendance: []
     });
 
-    const [alreadySubmitted, setAlreadySubmitted] = useState(false);
+    const [recordId, setRecordId] = useState(null);
+    const [isUpdateMode, setIsUpdateMode] = useState(false);
 
     useEffect(() => {
         async function loadData() {
@@ -55,12 +57,16 @@ export default function LectureEntryForm() {
                 const { records } = await api.dlr.getReportData(today);
                 const existing = records.find(r => r.timetable_id === id);
                 if (existing) {
-                    setAlreadySubmitted(true);
+                    setIsUpdateMode(true);
+                    setRecordId(existing.id);
                     setFormData(prev => ({
                         ...prev,
                         ...existing,
                         actual_start_time: existing.actual_start_time?.slice(0, 5),
                         actual_end_time: existing.actual_end_time?.slice(0, 5),
+                        assignments_collected_last_week: existing.assignments_collected_last_week || '',
+                        assignments_given_coming_week: existing.assignments_given_coming_week || '',
+                        assignments_graded_previous_week: existing.assignments_graded_previous_week || '',
                     }));
                 } else {
                     // Check for local attendance data if not submitted
@@ -90,6 +96,18 @@ export default function LectureEntryForm() {
         loadData();
     }, [id]);
 
+    // Protect against accidental refresh/navigation
+    useEffect(() => {
+        const handleBeforeUnload = (e) => {
+            if (!isUpdateMode && (formData.attendance_count || formData.topic_covered || formData.remarks)) {
+                e.preventDefault();
+                e.returnValue = '';
+            }
+        };
+        window.addEventListener('beforeunload', handleBeforeUnload);
+        return () => window.removeEventListener('beforeunload', handleBeforeUnload);
+    }, [isUpdateMode, formData]);
+
     const handleSameFaculty = () => {
         if (!timetableEntry) return;
         setFormData(prev => ({
@@ -107,8 +125,15 @@ export default function LectureEntryForm() {
         e.preventDefault();
         setSubmitting(true);
 
+        // Validation: Attendance vs Batch Strength
+        if (timetableEntry?.batch_strength && parseInt(formData.attendance_count) > timetableEntry.batch_strength) {
+            toast.error(`Attendance cannot exceed batch strength (${timetableEntry.batch_strength})`);
+            setSubmitting(false);
+            return;
+        }
+
         try {
-            await api.dlr.submit({
+            const payload = {
                 timetable_id: id,
                 actual_start_time: formData.actual_start_time,
                 actual_end_time: formData.actual_end_time,
@@ -118,18 +143,27 @@ export default function LectureEntryForm() {
                 topic_covered: formData.topic_covered,
                 lecture_capture_status: formData.lecture_capture_status,
                 smart_board_pdf_status: formData.smart_board_pdf_status,
-                smart_board_pdf_status: formData.smart_board_pdf_status,
+                assignments_collected_last_week: formData.assignments_collected_last_week,
+                assignments_given_coming_week: formData.assignments_given_coming_week,
+                assignments_graded_previous_week: formData.assignments_graded_previous_week,
                 remarks: formData.remarks,
                 student_attendance: formData.student_attendance,
                 submitted_by: user?.id,
                 date: new Date().toISOString().split('T')[0] // Always submit for today
-            });
+            };
 
-            toast.success('Audit Record Submitted!');
+            if (isUpdateMode && recordId) {
+                await api.dlr.update(recordId, payload);
+                toast.success('Audit Record Updated!');
+            } else {
+                await api.dlr.submit(payload);
+                toast.success('Audit Record Submitted!');
+            }
+
             navigate('/');
         } catch (error) {
             console.error(error);
-            toast.error('Submission failed. Room might be double-booked.');
+            toast.error(error.message || 'Submission failed. Please check for conflicts.');
         } finally {
             setSubmitting(false);
         }
@@ -170,15 +204,22 @@ export default function LectureEntryForm() {
                     <div className="flex items-center gap-4 text-sm font-medium opacity-90">
                         <span className="flex items-center"><MapPin className="h-3 w-3 mr-1" /> {timetableEntry.room_no}</span>
                         <span className="opacity-40">|</span>
-                        <span>Sem {timetableEntry.semester} - {timetableEntry.division}</span>
+                        <span className="flex items-center gap-2">
+                            Sem {timetableEntry.semester} - {timetableEntry.division}
+                            {timetableEntry.batch && (
+                                <span className="bg-white text-blue-600 px-1.5 rounded font-black text-[10px]">
+                                    Batch {timetableEntry.batch}
+                                </span>
+                            )}
+                        </span>
                     </div>
                 </div>
 
                 <form onSubmit={handleSubmit} className="space-y-6">
-                    {alreadySubmitted && (
-                        <div className="p-4 bg-green-50 border border-green-200 rounded-2xl flex items-center gap-3">
-                            <CheckCircle2 className="h-5 w-5 text-green-600" />
-                            <p className="text-sm font-bold text-green-800">This record is already in the official audit.</p>
+                    {isUpdateMode && (
+                        <div className="p-4 bg-blue-50 border border-blue-200 rounded-2xl flex items-center gap-3">
+                            <CheckCircle2 className="h-5 w-5 text-blue-600" />
+                            <p className="text-sm font-bold text-blue-800">Editing existing audit record.</p>
                         </div>
                     )}
 
@@ -188,7 +229,7 @@ export default function LectureEntryForm() {
                             <Users className="h-3.5 w-3.5 text-blue-500" /> Session Conducted By
                         </h3>
                         <select
-                            disabled={alreadySubmitted}
+                            disabled={false}
                             value={formData.faculty_id}
                             onChange={e => setFormData({ ...formData, faculty_id: e.target.value })}
                             className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 transition-all disabled:opacity-50"
@@ -218,12 +259,12 @@ export default function LectureEntryForm() {
                                         type="number"
                                         required
                                         placeholder="0"
-                                        disabled={alreadySubmitted}
+                                        disabled={false}
                                         value={formData.attendance_count}
                                         onChange={e => setFormData({ ...formData, attendance_count: e.target.value })}
                                         className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-lg font-black text-gray-900 focus:ring-2 focus:ring-blue-500"
                                     />
-                                    {!alreadySubmitted && (
+                                    {true && (
                                         <button
                                             type="button"
                                             onClick={() => navigate(`/attendance/${id}`)}
@@ -241,7 +282,7 @@ export default function LectureEntryForm() {
                                     type="text"
                                     required
                                     placeholder="Room No"
-                                    disabled={alreadySubmitted}
+                                    disabled={false}
                                     value={formData.room_no}
                                     onChange={e => setFormData({ ...formData, room_no: e.target.value })}
                                     className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-lg font-black text-gray-900 focus:ring-2 focus:ring-blue-500 uppercase"
@@ -256,7 +297,7 @@ export default function LectureEntryForm() {
                             rows={3}
                             required
                             placeholder="Write brief topics..."
-                            disabled={alreadySubmitted}
+                            disabled={false}
                             value={formData.topic_covered}
                             onChange={e => setFormData({ ...formData, topic_covered: e.target.value })}
                             className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500 mb-4"
@@ -268,7 +309,7 @@ export default function LectureEntryForm() {
                                 <input
                                     type="time"
                                     required
-                                    disabled={alreadySubmitted}
+                                    disabled={false}
                                     value={formData.actual_start_time}
                                     onChange={e => setFormData({ ...formData, actual_start_time: e.target.value })}
                                     className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-black text-gray-900 focus:ring-2 focus:ring-blue-500"
@@ -279,7 +320,7 @@ export default function LectureEntryForm() {
                                 <input
                                     type="time"
                                     required
-                                    disabled={alreadySubmitted}
+                                    disabled={false}
                                     value={formData.actual_end_time}
                                     onChange={e => setFormData({ ...formData, actual_end_time: e.target.value })}
                                     className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-black text-gray-900 focus:ring-2 focus:ring-blue-500"
@@ -307,7 +348,7 @@ export default function LectureEntryForm() {
                                 </div>
                                 <input
                                     type="checkbox"
-                                    disabled={alreadySubmitted}
+                                    disabled={false}
                                     checked={formData.lecture_capture_status}
                                     onChange={e => setFormData({ ...formData, lecture_capture_status: e.target.checked })}
                                     className="h-6 w-6 rounded-lg text-blue-600 focus:ring-blue-500 border-gray-200"
@@ -324,9 +365,11 @@ export default function LectureEntryForm() {
                                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Published on V-Refer</p>
                                     </div>
                                 </div>
+
+
                                 <input
                                     type="checkbox"
-                                    disabled={alreadySubmitted || !formData.lecture_capture_status}
+                                    disabled={false}
                                     checked={formData.smart_board_pdf_status}
                                     onChange={e => setFormData({ ...formData, smart_board_pdf_status: e.target.checked })}
                                     className="h-6 w-6 rounded-lg text-green-600 focus:ring-green-500 border-gray-200"
@@ -335,33 +378,82 @@ export default function LectureEntryForm() {
                         </div>
                     </div>
 
+                    {/* Assignments Section */}
+                    <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
+                        <h3 className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-6 flex items-center gap-2">
+                            <BookOpen className="h-3.5 w-3.5 text-blue-500" /> Assignment Details
+                        </h3>
+
+                        <div className="space-y-4">
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                                    Assignments Collected (Last Week)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Assignment No. / N/A"
+                                    disabled={false}
+                                    value={formData.assignments_collected_last_week}
+                                    onChange={e => setFormData({ ...formData, assignments_collected_last_week: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                                    Assignments Given (For Coming Week)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Assignment No. / N/A"
+                                    disabled={false}
+                                    value={formData.assignments_given_coming_week}
+                                    onChange={e => setFormData({ ...formData, assignments_given_coming_week: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+
+                            <div>
+                                <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">
+                                    Assignments Graded (Previous Week)
+                                </label>
+                                <input
+                                    type="text"
+                                    placeholder="Enter Assignment No. / N/A"
+                                    disabled={false}
+                                    value={formData.assignments_graded_previous_week}
+                                    onChange={e => setFormData({ ...formData, assignments_graded_previous_week: e.target.value })}
+                                    className="w-full bg-gray-50 border-none rounded-2xl py-3 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500"
+                                />
+                            </div>
+                        </div>
+                    </div>
+
                     <div className="bg-white rounded-3xl p-6 shadow-sm border border-gray-100">
                         <label className="text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2 block">Remarks</label>
                         <textarea
                             rows={2}
                             placeholder="Optional notes..."
-                            disabled={alreadySubmitted}
+                            disabled={false}
                             value={formData.remarks}
                             onChange={e => setFormData({ ...formData, remarks: e.target.value })}
                             className="w-full bg-gray-50 border-none rounded-2xl py-4 px-4 text-sm font-bold text-gray-700 focus:ring-2 focus:ring-blue-500"
                         />
                     </div>
 
-                    {!alreadySubmitted && (
-                        <div className="pt-4">
-                            <button
-                                type="submit"
-                                disabled={submitting}
-                                className="w-full bg-blue-600 text-white font-black text-sm uppercase tracking-widest py-5 rounded-3xl shadow-2xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
-                            >
-                                <Save className="h-5 w-5" />
-                                {submitting ? 'Authenticating Audit...' : 'Submit Session Audit'}
-                            </button>
-                            <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-6">
-                                Securing transmission with academic audit server...
-                            </p>
-                        </div>
-                    )}
+                    <div className="pt-4">
+                        <button
+                            type="submit"
+                            disabled={submitting}
+                            className="w-full bg-blue-600 text-white font-black text-sm uppercase tracking-widest py-5 rounded-3xl shadow-2xl shadow-blue-100 hover:bg-blue-700 active:scale-95 transition-all flex items-center justify-center gap-3 disabled:opacity-50"
+                        >
+                            <Save className="h-5 w-5" />
+                            {submitting ? 'Processing...' : (isUpdateMode ? 'Update Session Audit' : 'Submit Session Audit')}
+                        </button>
+                        <p className="text-center text-[10px] text-gray-400 font-bold uppercase tracking-widest mt-6">
+                            Securing transmission with academic audit server...
+                        </p>
+                    </div>
                 </form>
             </div>
         </div>
