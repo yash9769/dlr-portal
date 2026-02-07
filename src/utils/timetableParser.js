@@ -39,7 +39,8 @@ export const parseExcelTimetable = async (file) => {
                     'room': ['room', 'roomno', 'classroom', 'venue', 'room no'],
                     'semester': ['semester', 'sem'],
                     'division': ['division', 'div', 'section'],
-                    'batch_strength': ['batchstrength', 'strength', 'capacity']
+                    'batch_strength': ['batchstrength', 'strength', 'capacity'],
+                    'batch': ['batch', 'group', 'lab_batch']
                 };
 
                 // Find matching columns
@@ -482,7 +483,8 @@ export const mapToTimetableSchema = (rawData, facultyList) => {
             end_time: formatTime(row['end_time']),
             room_no: String(row['room'] || row['room_no'] || ''),
             assigned_faculty_id: facultyId,
-            batch_strength: parseInt(row['batch_strength']) || 60
+            batch_strength: parseInt(row['batch_strength']) || 60,
+            batch: row['batch'] || null
         };
     }).filter(item => item.subject_name && item.day_of_week);
 };
@@ -529,15 +531,16 @@ const formatTime = (timeStr) => {
 export const exportToExcel = (entries) => {
     // Format data for Excel
     const data = entries.map(e => ({
-        'Day': e.day_of_week,
-        'Start Time': e.start_time,
-        'End Time': e.end_time,
-        'Subject': e.subject_name,
-        'Subject Type': e.subject_type,
-        'Faculty': e.assigned_faculty?.name || 'Unassigned',
-        'Room': e.room_no,
-        'Semester': e.semester,
-        'Division': e.division,
+        'Day': e.day_of_week || 'N/A',
+        'Start Time': e.start_time || '00:00',
+        'End Time': e.end_time || '00:00',
+        'Subject': e.subject_name || 'Untitled',
+        'Subject Type': e.subject_type || 'IT',
+        'Faculty': typeof e.assigned_faculty === 'string' ? e.assigned_faculty : (e.assigned_faculty?.name || 'Unassigned'),
+        'Room': e.room_no || 'TBD',
+        'Semester': e.semester || 'VI',
+        'Division': e.division || 'A',
+        'Batch': e.batch || '',
         'Batch Strength': e.batch_strength || 60
     }));
 
