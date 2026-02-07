@@ -159,7 +159,7 @@ export const generateDailyReport = (date, schedule, records, approval = null) =>
     });
 
     autoTable(doc, {
-        startY: finalY + 8,
+        startY: finalY + 30,
         head: [['Room', 'Lec #', 'Time', 'Dept', 'Subject', 'Faculty', 'Mic Used', 'Lecture Capture', 'LMS Upload', 'Remarks']],
         body: lcRows,
         theme: 'grid',
