@@ -51,6 +51,7 @@ create table timetable (
   end_time time not null,
   room_no text not null,
   assigned_faculty_id uuid references faculty(id),
+  batch text, -- e.g., "B1", "B2" (Only for Labs)
   created_at timestamp with time zone default timezone('utc'::text, now()) not null
 );
 
@@ -140,3 +141,49 @@ from daily_lecture_records dlr
 join faculty f on dlr.faculty_id = f.id
 left join timetable t on dlr.timetable_id = t.id
 where dlr.lecture_capture_status = true;
+
+-- 6. Bug Reports Table
+create table if not exists bug_reports (
+    id uuid default uuid_generate_v4() primary key,
+    user_id uuid references profiles(id), -- Changed to profiles to ensure FK consistency if needed, but auth.users is safer 
+    description text not null,
+    steps_to_reproduce text,
+    severity text check (severity in ('low', 'medium', 'high', 'critical')) default 'medium',
+    status text check (status in ('open', 'in_progress', 'resolved')) default 'open',
+    created_at timestamp with time zone default timezone('utc'::text, now()),
+    resolved_at timestamp with time zone
+);
+
+alter table bug_reports enable row level security;
+
+create policy "Users can insert their own bug reports" on bug_reports
+    for insert with check (auth.uid() = user_id);
+
+create policy "Users can view their own bug reports" on bug_reports
+    for select using (auth.uid() = user_id);
+
+create policy "Admins can view and update bug reports" on bug_reports
+    for all using (
+        exists (
+            select 1 from profiles
+            where profiles.id = auth.uid()
+            and profiles.role in ('admin', 'hod', 'administrator')
+        )
+    );
+
+-- 7. Students Table (Roll Call)
+create table if not exists students (
+    id uuid default uuid_generate_v4() primary key,
+    roll_no text not null,
+    name text not null,
+    branch text default 'IT',
+    division text not null,
+    year text not null,
+    batch text, -- e.g., "B1", "B2"
+    created_at timestamp with time zone default timezone('utc'::text, now())
+);
+
+alter table students enable row level security;
+create policy "Students viewable by authenticated" on students for select to authenticated using (true);
+create policy "Admins can manage students" on students for all to authenticated using (true);
+
