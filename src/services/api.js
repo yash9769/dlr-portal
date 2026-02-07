@@ -1,4 +1,5 @@
 import { supabase } from '../lib/supabase';
+import { Capacitor } from '@capacitor/core';
 
 export const api = {
     auth: {
@@ -25,6 +26,22 @@ export const api = {
         logout: async () => {
             return await supabase.auth.signOut();
         },
+        loginWithGoogle: async () => {
+            const { data, error } = await supabase.auth.signInWithOAuth({
+                provider: 'google',
+                options: {
+                    redirectTo: Capacitor.isNativePlatform()
+                        ? 'com.yashodhan.dlr://login-callback'
+                        : window.location.origin,
+                    queryParams: {
+                        access_type: 'offline',
+                        prompt: 'consent',
+                    }
+                },
+            });
+            if (error) throw error;
+            return { data };
+        },
         getUser: async () => {
             // Check for active session first
             const { data: { session } } = await supabase.auth.getSession();
@@ -40,9 +57,17 @@ export const api = {
                     .maybeSingle(); // Use maybeSingle to avoid 406 errors
                 if (error) {
                     console.error('Error fetching profile:', error);
-                    return user; // Return basic user if profile fails
+                    // Fallback: Use email to grant admin role if profile fetch fails
+                    if (user.email === 'admin@vit.edu.in') {
+                        return { ...user, role: 'admin' };
+                    }
+                    return user;
                 }
-                return { ...user, ...(profile || {}) };
+
+                // Fallback: If profile exists but role is missing/null, check email
+                const finalRole = profile?.role || ((user.email === 'admin@vit.edu.in') ? 'admin' : 'faculty');
+
+                return { ...user, ...profile, role: finalRole };
             }
             return null;
         },
@@ -102,6 +127,16 @@ export const api = {
             const { data, error } = await supabase
                 .from('daily_lecture_records')
                 .insert(record)
+                .select()
+                .single();
+            if (error) throw error;
+            return { data };
+        },
+        update: async (id, updates) => {
+            const { data, error } = await supabase
+                .from('daily_lecture_records')
+                .update(updates)
+                .eq('id', id)
                 .select()
                 .single();
             if (error) throw error;
@@ -175,6 +210,71 @@ export const api = {
                 .eq('report_date', date)
                 .maybeSingle();
             if (error) return { data: null };
+            return { data };
+        }
+    },
+    bugs: {
+        submit: async (report) => {
+            const { data, error } = await supabase
+                .from('bug_reports')
+                .insert(report)
+                .select()
+                .single();
+            if (error) throw error;
+            return { data };
+        },
+        list: async () => {
+            const { data, error } = await supabase
+                .from('bug_reports')
+                .select(`
+                    *,
+                    profiles!user_id (
+                        full_name,
+                        email
+                    )
+                `)
+                .order('created_at', { ascending: false });
+            if (error) throw error;
+            return { data };
+        },
+        updateStatus: async (id, status) => {
+            const updates = { status };
+            if (status === 'resolved') {
+                updates.resolved_at = new Date().toISOString();
+            }
+            const { data, error } = await supabase
+                .from('bug_reports')
+                .update(updates)
+                .eq('id', id)
+                .select()
+                .single();
+            if (error) throw error;
+            return { data };
+        }
+    },
+    students: {
+        list: async (filters = {}) => {
+            let query = supabase.from('students').select('*').order('roll_no');
+            if (filters.division) query = query.eq('division', filters.division);
+            if (filters.year) query = query.eq('year', filters.year);
+            if (filters.batch) query = query.eq('batch', filters.batch);
+            const { data, error } = await query;
+            if (error) throw error;
+            return { data };
+        },
+        create: async (student) => {
+            const { data, error } = await supabase.from('students').insert(student);
+            if (error) throw error;
+            return { data };
+        },
+        delete: async (id) => {
+            const { error } = await supabase.from('students').delete().eq('id', id);
+            if (error) throw error;
+            return { error: null };
+        },
+        bulkCreate: async (students) => {
+            const { data, error } = await supabase.from('students').insert(students);
+            if (error) throw error;
             return { data };
         }
     }
