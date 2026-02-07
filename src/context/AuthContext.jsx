@@ -36,13 +36,21 @@ export function AuthProvider({ children }) {
         return { success: false, error };
     };
 
+    const loginWithGoogle = async () => {
+        try {
+            await api.auth.loginWithGoogle();
+        } catch (error) {
+            return { success: false, error };
+        }
+    };
+
     const logout = async () => {
         await api.auth.logout();
         setUser(null);
     };
 
     return (
-        <AuthContext.Provider value={{ user, login, logout, loading }}>
+        <AuthContext.Provider value={{ user, login, loginWithGoogle, logout, loading }}>
             {!loading && children}
         </AuthContext.Provider>
     );
