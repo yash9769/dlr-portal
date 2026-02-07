@@ -3,21 +3,21 @@ import { addDays, startOfWeek } from 'date-fns';
 export const MOCK_USERS = [
     {
         id: 'admin-1',
-        email: 'admin@vit.edu',
+        email: 'admin@vit.edu.in',
         full_name: 'Department Admin',
         role: 'admin',
         department: 'Information Technology'
     },
     {
         id: 'fac-1',
-        email: 'faculty@vit.edu',
+        email: 'faculty@vit.edu.in',
         full_name: 'Amit Kumar',
         role: 'faculty',
         department: 'Information Technology'
     },
     {
         id: 'hod-1',
-        email: 'hod@vit.edu',
+        email: 'hod@vit.edu.in',
         full_name: 'Dr. HOD',
         role: 'hod',
         department: 'Information Technology'
