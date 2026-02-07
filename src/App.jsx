@@ -8,7 +8,23 @@ function App() {
     <BrowserRouter>
       <AuthProvider>
         <AppRouter />
-        <Toaster position="top-right" />
+        <Toaster
+          position="top-right"
+          containerStyle={{
+            top: 40,
+            left: 20,
+            bottom: 20,
+            right: 20,
+          }}
+          toastOptions={{
+            className: 'font-sans font-bold text-sm',
+            style: {
+              borderRadius: '12px',
+              background: '#333',
+              color: '#fff',
+            },
+          }}
+        />
       </AuthProvider>
     </BrowserRouter>
   )
