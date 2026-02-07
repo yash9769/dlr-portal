@@ -1,8 +1,11 @@
 import { useState, useEffect } from 'react';
+
+import { Capacitor } from '@capacitor/core';
 import { api } from '../services/api';
 import { useAuth } from '../context/AuthContext';
 import { generateDailyReport } from '../services/reportService';
 import { generateDLRExcel, generateStudentAttendanceExcel } from '../services/excelService';
+import { downloadFile } from '../utils/fileDownloader';
 import { FileText, Download, Eye, X, CheckCircle, Clock, MapPin, FileSpreadsheet, Users } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -18,7 +21,7 @@ export default function Reports() {
     useEffect(() => {
         loadRecords();
         checkApproval();
-    }, [selectedDate]);
+    }, [selectedDate, user]);
 
     const checkApproval = async () => {
         try {
@@ -81,16 +84,23 @@ export default function Reports() {
     const handlePreview = async () => {
         const doc = await fetchReportData();
         if (doc) {
-            const pdfBlob = doc.output('blob');
-            const url = URL.createObjectURL(pdfBlob);
-            setPreviewUrl(url);
+            const blob = doc.output('blob');
+            // Now using our custom plugin, so we can re-enable native support
+            if (Capacitor.isNativePlatform()) {
+                await downloadFile(blob, `DLR_Preview_${selectedDate}.pdf`, 'application/pdf');
+            } else {
+                const url = URL.createObjectURL(blob);
+                setPreviewUrl(url);
+            }
         }
     };
 
     const handleDownload = async () => {
         const doc = await fetchReportData();
         if (doc) {
-            doc.save(`DLR_Report_${selectedDate}.pdf`);
+            // doc.save is web-only usually, let's use our universal downloader
+            const blob = doc.output('blob');
+            await downloadFile(blob, `DLR_Report_${selectedDate}.pdf`, 'application/pdf');
         }
     };
 
@@ -99,6 +109,9 @@ export default function Reports() {
         try {
             const { schedule, records } = await api.dlr.getReportData(selectedDate);
             const { data: faculty } = await api.faculty.list();
+            // generateDLRExcel now expected to handle download via downloadFile internally or return data?
+            // Let's modify excelService to use downloadFile internally to share logic.
+            // So we just call it.
             generateDLRExcel(new Date(selectedDate), schedule, faculty || [], records || []);
         } catch (err) {
             console.error(err);
@@ -174,21 +187,21 @@ export default function Reports() {
                             }
                         </p>
                     </div>
-                    <div className="flex space-x-3">
+                    <div className="flex flex-wrap gap-2">
                         {(user?.role === 'admin' || user?.role === 'hod') && !approvalStatus && (
                             <>
                                 <button
                                     onClick={handleApprove}
                                     disabled={loading}
-                                    className="inline-flex items-center px-4 py-2 border border-green-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-green-600 bg-white hover:bg-green-50 focus:outline-none transition-colors"
+                                    className={`inline-flex items-center px-4 py-2 border border-green-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md ${loading ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'text-green-600 bg-white hover:bg-green-50'} transition-colors`}
                                 >
                                     <CheckCircle className="-ml-1 mr-2 h-4 w-4" />
-                                    Approve
+                                    {loading ? 'Processing...' : 'Approve'}
                                 </button>
                                 <button
                                     onClick={() => alert('DLRs rejected and notified to respective faculty.')}
                                     disabled={loading}
-                                    className="inline-flex items-center px-4 py-2 border border-red-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-red-600 bg-white hover:bg-red-50 focus:outline-none transition-colors"
+                                    className={`inline-flex items-center px-4 py-2 border border-red-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md ${loading ? 'opacity-50 cursor-not-allowed bg-gray-50' : 'text-red-600 bg-white hover:bg-red-50'} transition-colors`}
                                 >
                                     <X className="-ml-1 mr-2 h-4 w-4" />
                                     Reject
@@ -198,34 +211,34 @@ export default function Reports() {
                         <button
                             onClick={handlePreview}
                             disabled={loading}
-                            className="inline-flex items-center px-4 py-2 border border-blue-200 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-gray-700 bg-blue-50 hover:bg-blue-100 focus:outline-none transition-colors"
+                            className={`inline-flex items-center px-4 py-2 border border-blue-200 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md ${loading ? 'opacity-50 cursor-not-allowed bg-gray-100' : 'text-gray-700 bg-blue-50 hover:bg-blue-100'} transition-colors`}
                         >
                             <Eye className="-ml-1 mr-2 h-4 w-4 text-blue-500" />
-                            PDF Preview
+                            Preview
                         </button>
                         <button
                             onClick={handleDownload}
                             disabled={loading}
-                            className="inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-white bg-blue-600 hover:bg-blue-700 focus:outline-none transition-colors"
+                            className={`inline-flex items-center px-4 py-2 border border-transparent shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-white ${loading ? 'bg-blue-400 cursor-not-allowed' : 'bg-blue-600 hover:bg-blue-700'} transition-colors`}
                         >
                             <Download className="-ml-1 mr-2 h-4 w-4" />
-                            Formal PDF
+                            PDF
                         </button>
                         <button
                             onClick={handleExcelDownload}
                             disabled={loading}
-                            className="inline-flex items-center px-4 py-2 border border-green-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-green-700 bg-white hover:bg-green-50 focus:outline-none transition-colors"
+                            className={`inline-flex items-center px-4 py-2 border border-green-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md ${loading ? 'opacity-50 cursor-not-allowed bg-green-50' : 'text-green-700 bg-white hover:bg-green-50'} transition-colors`}
                         >
                             <FileSpreadsheet className="-ml-1 mr-2 h-4 w-4" />
-                            DLR Excel Template
+                            Excel
                         </button>
                         <button
                             onClick={handleStudentAttendanceDownload}
                             disabled={loading}
-                            className="inline-flex items-center px-4 py-2 border border-blue-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md text-blue-700 bg-white hover:bg-blue-50 focus:outline-none transition-colors"
+                            className={`inline-flex items-center px-4 py-2 border border-blue-600 shadow-sm text-xs font-bold uppercase tracking-widest rounded-md ${loading ? 'opacity-50 cursor-not-allowed bg-blue-50' : 'text-blue-700 bg-white hover:bg-blue-50'} transition-colors`}
                         >
                             <Users className="-ml-1 mr-2 h-4 w-4" />
-                            Student Attendance
+                            Attendance
                         </button>
                     </div>
                 </div>
@@ -268,6 +281,9 @@ export default function Reports() {
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-center">Attendance</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider text-center">L.C.</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Changes?</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asgn. Collect (Last Wk)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asgn. Give (Next Wk)</th>
+                                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Asgn. Grade (Prev Wk)</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Topic Covered</th>
                                 <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Remarks</th>
                             </tr>
@@ -275,7 +291,7 @@ export default function Reports() {
                         <tbody className="bg-white divide-y divide-gray-200">
                             {filteredRecords.length === 0 ? (
                                 <tr>
-                                    <td colSpan="8" className="px-6 py-10 text-center text-gray-400">
+                                    <td colSpan="11" className="px-6 py-10 text-center text-gray-400">
                                         No records found for the selected criteria.
                                     </td>
                                 </tr>
@@ -321,6 +337,15 @@ export default function Reports() {
                                                         NO
                                                     </span>
                                                 )}
+                                            </td>
+                                            <td className="px-4 py-4 text-xs text-gray-700 font-mono">
+                                                {record.assignments_collected_last_week || '-'}
+                                            </td>
+                                            <td className="px-4 py-4 text-xs text-gray-700 font-mono">
+                                                {record.assignments_given_coming_week || '-'}
+                                            </td>
+                                            <td className="px-4 py-4 text-xs text-gray-700 font-mono">
+                                                {record.assignments_graded_previous_week || '-'}
                                             </td>
                                             <td className="px-4 py-4 text-xs text-gray-800 max-w-[200px] truncate" title={record.topic_covered}>
                                                 {record.topic_covered}
