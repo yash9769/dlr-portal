@@ -88,7 +88,7 @@ export default function Dashboard() {
     }, [user]);
 
     if (loading) return (
-        <div className="flex flex-col items-center justify-center min-h-[400px]">
+        <div className="flex flex-col items-center justify-center h-[calc(100vh-80px)]">
             <div className="animate-spin rounded-full h-10 w-10 border-4 border-blue-100 border-t-blue-600"></div>
             <p className="mt-4 text-gray-500 font-medium">Fetching your schedule...</p>
         </div>
@@ -104,7 +104,7 @@ export default function Dashboard() {
     const submittedCount = schedule.filter(s => s.status === 'Submitted' || s.status.includes('Locked')).length;
     const progress = schedule.length > 0 ? (submittedCount / schedule.length) * 100 : 0;
 
-    const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'hod' || user?.email?.toLowerCase() === 'admin@vit.edu';
+    const isAdmin = user?.role?.toLowerCase() === 'admin' || user?.role?.toLowerCase() === 'hod' || user?.email?.toLowerCase() === 'admin@vit.edu.in';
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 md:px-8 py-6 sm:py-8">
@@ -205,8 +205,13 @@ export default function Dashboard() {
                                         {lecture.status === 'Conflict' ? <AlertCircle className="h-3 w-3 mr-1.5" /> : null}
                                         {lecture.status}
                                     </span>
-                                    <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase tracking-widest">
+                                    <div className="text-[10px] font-bold text-blue-600 bg-blue-50 px-3 py-1 rounded-full uppercase tracking-widest flex items-center gap-2">
                                         {lecture.semester} - {lecture.division}
+                                        {lecture.batch && (
+                                            <span className="bg-blue-600 text-white px-1.5 rounded font-black">
+                                                {lecture.batch}
+                                            </span>
+                                        )}
                                     </div>
                                 </div>
 
@@ -251,16 +256,7 @@ export default function Dashboard() {
                 </div>
             )}
 
-            {/* Mobile Admin Link */}
-            {isAdmin && (
-                <button
-                    onClick={() => navigate('/timetable')}
-                    className="lg:hidden w-full mt-10 inline-flex items-center justify-center px-6 py-4 bg-gray-900 border border-transparent rounded-2xl text-xs font-bold text-white uppercase tracking-widest hover:bg-gray-800 transition-all active:scale-95"
-                >
-                    <Settings className="h-4 w-4 mr-2" />
-                    Management Console
-                </button>
-            )}
+
 
             {/* Quote attribution */}
             <div className="mt-20 text-center">
