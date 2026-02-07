@@ -7,26 +7,26 @@ import { format } from 'date-fns';
 export default function SubmissionHistory() {
     const { user } = useAuth();
     const [history, setHistory] = useState([]);
+    const [filteredHistory, setFilteredHistory] = useState([]);
     const [loading, setLoading] = useState(true);
+    const [showFilter, setShowFilter] = useState(false);
+    const [filterDate, setFilterDate] = useState('');
 
     useEffect(() => {
         async function fetchHistory() {
             setLoading(true);
             try {
-                if (user?.email) {
-                    // Fetch all records for this faculty
-                    const { data: faculties } = await api.faculty.list();
-                    const myFaculty = faculties.find(f => f.email === user.email);
+                if (user?.id) {
+                    const { data: records } = await api.dlr.listSubmissions();
 
-                    if (myFaculty) {
-                        const { data: records } = await api.dlr.listSubmissions();
-                        // Filter for current faculty
-                        const myRecords = records.filter(r => r.faculty_id === myFaculty.id);
+                    // Filter for records submitted by the current user
+                    // This ensures "My History" is accurate regardless of role or faculty mapping
+                    const myRecords = records.filter(r => r.submitted_by === user.id);
 
-                        // Sort by date descending
-                        myRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
-                        setHistory(myRecords);
-                    }
+                    // Sort by date descending
+                    myRecords.sort((a, b) => new Date(b.date) - new Date(a.date));
+                    setHistory(myRecords);
+                    setFilteredHistory(myRecords);
                 }
             } catch (err) {
                 console.error(err);
@@ -36,6 +36,14 @@ export default function SubmissionHistory() {
         }
         fetchHistory();
     }, [user]);
+
+    useEffect(() => {
+        if (!filterDate) {
+            setFilteredHistory(history);
+        } else {
+            setFilteredHistory(history.filter(r => r.date === filterDate));
+        }
+    }, [filterDate, history]);
 
     if (loading) return <div className="p-8 text-center text-gray-500">Loading history...</div>;
 
@@ -49,70 +57,78 @@ export default function SubmissionHistory() {
                     </h1>
                     <p className="text-sm text-gray-500 mt-1">Review your past lecture capture and audit submissions.</p>
                 </div>
-                <div className="flex gap-2">
-                    <button className="p-2 border border-gray-200 rounded-lg hover:bg-gray-50 bg-white shadow-sm">
-                        <Filter className="h-4 w-4 text-gray-500" />
+                <div className="flex gap-2 relative">
+                    {showFilter && (
+                        <input
+                            type="date"
+                            className="text-xs p-2 border border-gray-200 rounded-lg shadow-sm"
+                            value={filterDate}
+                            onChange={(e) => setFilterDate(e.target.value)}
+                        />
+                    )}
+                    <button
+                        onClick={() => setShowFilter(!showFilter)}
+                        className={`p-2 border rounded-lg hover:bg-gray-50 shadow-sm transition-colors ${showFilter ? 'bg-blue-50 border-blue-200 text-blue-600' : 'bg-white border-gray-200 text-gray-500'}`}
+                    >
+                        <Filter className="h-4 w-4" />
                     </button>
                 </div>
             </div>
 
-            {history.length === 0 ? (
+            {filteredHistory.length === 0 ? (
                 <div className="bg-white rounded-3xl p-16 text-center border border-gray-100 shadow-sm">
                     <History className="h-12 w-12 text-gray-200 mx-auto mb-4" />
                     <p className="text-gray-500">No submissions found in the records.</p>
                 </div>
             ) : (
-                <div className="bg-white shadow-sm border border-gray-100 rounded-3xl overflow-hidden">
-                    <table className="min-w-full divide-y divide-gray-100">
-                        <thead className="bg-gray-50">
-                            <tr>
-                                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Date / Time</th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Subject</th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">LC Status</th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest">Attendance</th>
-                                <th className="px-6 py-4 text-left text-[10px] font-black text-gray-400 uppercase tracking-widest text-right">Action</th>
-                            </tr>
-                        </thead>
-                        <tbody className="divide-y divide-gray-100">
-                            {history.map((record) => (
-                                <tr key={record.id} className="hover:bg-blue-50/30 transition-colors">
-                                    <td className="px-6 py-5 whitespace-nowrap">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-gray-900">{format(new Date(record.date), 'dd MMM yyyy')}</span>
-                                            <span className="text-[10px] text-gray-400 font-bold flex items-center">
-                                                <Clock className="h-3 w-3 mr-1" /> {record.actual_start_time?.slice(0, 5)} - {record.actual_end_time?.slice(0, 5)}
-                                            </span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        <div className="flex flex-col">
-                                            <span className="text-sm font-bold text-blue-600">{record.subject_name || 'Lecture'}</span>
-                                            <span className="text-[10px] text-gray-400 font-bold tracking-widest uppercase">Room {record.room_no}</span>
-                                        </div>
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        {record.lecture_capture_successful ? (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-green-50 text-green-700 border border-green-100 uppercase tracking-widest">
-                                                Successful
-                                            </span>
-                                        ) : (
-                                            <span className="inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-black bg-gray-50 text-gray-500 border border-gray-100 uppercase tracking-widest">
-                                                Not Enabled
-                                            </span>
-                                        )}
-                                    </td>
-                                    <td className="px-6 py-5">
-                                        <span className="text-sm font-black text-gray-700">{record.attendance_count || '0'}</span>
-                                    </td>
-                                    <td className="px-6 py-5 text-right">
-                                        <button className="text-xs font-bold text-blue-600 hover:text-blue-800 uppercase tracking-widest">
-                                            Details
-                                        </button>
-                                    </td>
-                                </tr>
-                            ))}
-                        </tbody>
-                    </table>
+                <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
+                    {filteredHistory.map((record) => (
+                        <div key={record.id} className="bg-white rounded-2xl p-5 border border-gray-100 shadow-sm hover:shadow-md transition-shadow relative overflow-hidden">
+                            {/* Status Indicator Strip */}
+                            <div className={`absolute left-0 top-0 bottom-0 w-1 ${record.lecture_capture_status ? 'bg-green-500' : 'bg-gray-200'}`}></div>
+
+                            <div className="flex justify-between items-start mb-3">
+                                <div>
+                                    <h3 className="text-lg font-black text-gray-900 tracking-tight leading-none mb-1">
+                                        {record.subject_name || 'Lecture Session'}
+                                    </h3>
+                                    <p className="text-[10px] font-bold text-gray-400 uppercase tracking-widest flex items-center gap-1">
+                                        <Clock className="h-3 w-3" />
+                                        {format(new Date(record.date), 'dd MMM')} • {record.actual_start_time?.slice(0, 5)}
+                                    </p>
+                                </div>
+                                <div className={`px-2 py-1 rounded-lg text-[10px] font-black uppercase tracking-widest border ${record.lecture_capture_status
+                                    ? 'bg-green-50 text-green-700 border-green-100'
+                                    : 'bg-gray-50 text-gray-400 border-gray-100'
+                                    }`}>
+                                    {record.lecture_capture_status ? 'LC Active' : 'No LC'}
+                                </div>
+                            </div>
+
+                            <div className="flex items-center gap-4 py-3 border-t border-gray-50 mt-1">
+                                <div className="flex-1">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">Room</p>
+                                    <p className="text-sm font-bold text-gray-900">{record.room_no}</p>
+                                </div>
+                                <div className="flex-1 border-l border-gray-50 pl-4">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">Attendance</p>
+                                    <p className="text-sm font-bold text-gray-900">{record.attendance_count || '0'}</p>
+                                </div>
+                                <div className="flex-1 border-l border-gray-50 pl-4">
+                                    <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-0.5">Topic</p>
+                                    <p className="text-xs font-medium text-gray-900 truncate max-w-[80px]">
+                                        {record.topic_covered || 'N/A'}
+                                    </p>
+                                </div>
+                            </div>
+
+                            {record.remarks && (
+                                <div className="mt-2 text-xs text-gray-500 bg-gray-50 p-2 rounded-lg italic border border-gray-100">
+                                    "{record.remarks}"
+                                </div>
+                            )}
+                        </div>
+                    ))}
                 </div>
             )}
         </div>
