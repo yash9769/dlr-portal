@@ -1,13 +1,13 @@
 import { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { api } from '../services/api';
-import { FAKE_STUDENTS } from '../utils/studentData';
 import { ArrowLeft, Save, CheckSquare, Square, Users } from 'lucide-react';
 import toast from 'react-hot-toast';
 
 export default function AttendanceTaker() {
     const { id } = useParams();
     const navigate = useNavigate();
+    const [students, setStudents] = useState([]);
     const [loading, setLoading] = useState(true);
     const [timetableEntry, setTimetableEntry] = useState(null);
     const [selectedStudents, setSelectedStudents] = useState(new Set());
@@ -24,14 +24,20 @@ export default function AttendanceTaker() {
                 const entry = allTimetable?.find(t => t.id === id);
                 setTimetableEntry(entry);
 
-                // Load saved attendance from local storage
-                const saved = localStorage.getItem(storageKey);
-                if (saved) {
-                    const parsed = JSON.parse(saved);
-                    setSelectedStudents(new Set(parsed.selectedIds));
-                } else {
-                    // Default: All present? Or All absent? Let's say all absent initially.
-                    // Or maybe pre-select based on previous logic? No, let's keep empty.
+                if (entry) {
+                    // Fetch real students for this division (and batch if it's a lab)
+                    const { data: studentData } = await api.students.list({
+                        division: entry.division,
+                        batch: entry.batch // This will filter if batch is set, otherwise returns div
+                    });
+                    setStudents(studentData || []);
+
+                    // Load saved attendance from local storage
+                    const saved = localStorage.getItem(storageKey);
+                    if (saved) {
+                        const parsed = JSON.parse(saved);
+                        setSelectedStudents(new Set(parsed.selectedIds));
+                    }
                 }
             } catch (error) {
                 console.error(error);
@@ -56,7 +62,7 @@ export default function AttendanceTaker() {
 
     const markAll = (present) => {
         if (present) {
-            const allIds = FAKE_STUDENTS.map(s => s.id);
+            const allIds = students.map(s => s.id);
             const newSet = new Set(allIds);
             setSelectedStudents(newSet);
             saveToStorage(newSet);
@@ -94,7 +100,7 @@ export default function AttendanceTaker() {
                 <div className="text-center">
                     <h1 className="text-sm font-black text-gray-900 uppercase tracking-tight">Attendance</h1>
                     <p className="text-[10px] items-center text-gray-500 font-bold uppercase tracking-wide">
-                        {timetableEntry.subject_name} ({timetableEntry.division})
+                        {timetableEntry.subject_name} ({timetableEntry.division}{timetableEntry.batch ? ` - ${timetableEntry.batch}` : ''})
                     </p>
                 </div>
                 <div className="w-10"></div>
@@ -111,12 +117,12 @@ export default function AttendanceTaker() {
                     <div className="h-8 w-px bg-gray-100"></div>
                     <div>
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Absent</p>
-                        <p className="text-2xl font-black text-red-500">{FAKE_STUDENTS.length - selectedStudents.size}</p>
+                        <p className="text-2xl font-black text-red-500">{students.length - selectedStudents.size}</p>
                     </div>
                     <div className="h-8 w-px bg-gray-100"></div>
                     <div>
                         <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest">Total</p>
-                        <p className="text-2xl font-black text-gray-800">{FAKE_STUDENTS.length}</p>
+                        <p className="text-2xl font-black text-gray-800">{students.length}</p>
                     </div>
                 </div>
 
@@ -138,33 +144,40 @@ export default function AttendanceTaker() {
 
                 {/* List */}
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                    {FAKE_STUDENTS.map((student, index) => {
-                        const isSelected = selectedStudents.has(student.id);
-                        return (
-                            <div
-                                key={student.id}
-                                onClick={() => toggleStudent(student.id)}
-                                className={`flex items-center justify-between p-4 border-b border-gray-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}
-                            >
-                                <div className="flex items-center gap-4">
-                                    <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
-                                        {student.roll}
+                    {students.length === 0 ? (
+                        <div className="p-10 text-center">
+                            <Users className="h-10 w-10 text-gray-200 mx-auto mb-2" />
+                            <p className="text-gray-400 text-sm">No students found for {timetableEntry.division} {timetableEntry.batch ? ` (Batch ${timetableEntry.batch})` : ''}</p>
+                        </div>
+                    ) : (
+                        students.map((student) => {
+                            const isSelected = selectedStudents.has(student.id);
+                            return (
+                                <div
+                                    key={student.id}
+                                    onClick={() => toggleStudent(student.id)}
+                                    className={`flex items-center justify-between p-4 border-b border-gray-50 cursor-pointer transition-colors ${isSelected ? 'bg-blue-50/30' : 'hover:bg-gray-50'}`}
+                                >
+                                    <div className="flex items-center gap-4">
+                                        <div className={`w-8 h-8 rounded-full flex items-center justify-center text-xs font-bold ${isSelected ? 'bg-blue-100 text-blue-700' : 'bg-gray-100 text-gray-500'}`}>
+                                            {student.roll_no}
+                                        </div>
+                                        <div>
+                                            <p className={`text-sm font-bold ${isSelected ? 'text-gray-900' : 'text-gray-600'}`}>
+                                                {student.name}
+                                            </p>
+                                            <p className="text-[10px] text-gray-400 uppercase tracking-widest">
+                                                Roll No: {student.roll_no}
+                                            </p>
+                                        </div>
                                     </div>
-                                    <div>
-                                        <p className={`text-sm font-bold ${isSelected ? 'text-gray-900' : 'text-gray-600'}`}>
-                                            {student.name}
-                                        </p>
-                                        <p className="text-[10px] text-gray-400 uppercase tracking-widest">
-                                            Roll No: {student.roll}
-                                        </p>
+                                    <div className={`p-1 rounded-lg ${isSelected ? 'text-blue-600' : 'text-gray-300'}`}>
+                                        {isSelected ? <CheckSquare className="h-6 w-6" /> : <Square className="h-6 w-6" />}
                                     </div>
                                 </div>
-                                <div className={`p-1 rounded-lg ${isSelected ? 'text-blue-600' : 'text-gray-300'}`}>
-                                    {isSelected ? <CheckSquare className="h-6 w-6" /> : <Square className="h-6 w-6" />}
-                                </div>
-                            </div>
-                        );
-                    })}
+                            );
+                        })
+                    )}
                 </div>
             </div>
 
