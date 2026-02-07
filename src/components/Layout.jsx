@@ -1,5 +1,5 @@
 import { Fragment, useState } from 'react';
-import { Outlet, Link, useLocation } from 'react-router-dom';
+import { Outlet, Link, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
 import {
     Home,
@@ -10,14 +10,25 @@ import {
     Menu,
     X,
     User,
-    Info
+    Info,
+    Bug,
+    Users
 } from 'lucide-react';
 import { clsx } from 'clsx';
+import BugReportModal from './BugReportModal';
 
 export default function Layout() {
     const { user, logout } = useAuth();
     const [sidebarOpen, setSidebarOpen] = useState(false);
+    const [showBugModal, setShowBugModal] = useState(false);
     const location = useLocation();
+    const navigate = useNavigate();
+
+    const handleLogout = async () => {
+        // Navigate to login immediately to avoid ProtectedRoute capturing the current location state
+        navigate('/login', { replace: true });
+        await logout();
+    };
 
     const navigation = [
         { name: 'Dashboard', href: '/', icon: Home, current: location.pathname === '/' },
@@ -26,13 +37,15 @@ export default function Layout() {
         { name: 'Department Reports', href: '/reports', icon: FileText, current: location.pathname === '/reports' },
         { name: 'Timetable Setup', href: '/timetable', icon: Settings, current: location.pathname === '/timetable', adminOnly: true },
         { name: 'Faculty Master', href: '/faculty', icon: User, current: location.pathname === '/faculty', adminOnly: true },
+        { name: 'Student Master', href: '/students', icon: Users, current: location.pathname === '/students', adminOnly: true },
+        { name: 'System Issues', href: '/bugs', icon: Bug, current: location.pathname === '/bugs', adminOnly: true },
         { name: 'My Profile', href: '/profile', icon: User, current: location.pathname === '/profile' },
         { name: 'System Info', href: '/system-info', icon: Info, current: location.pathname === '/system-info' },
     ];
 
     const role = user?.role?.toLowerCase() || '';
     const email = user?.email?.toLowerCase() || '';
-    const isManagement = role === 'admin' || role === 'hod' || role === 'administrator' || email === 'admin@vit.edu';
+    const isManagement = role === 'admin' || role === 'hod' || role === 'administrator' || email === 'admin@vit.edu.in';
 
     return (
         <div className="h-screen flex overflow-hidden bg-gray-100">
@@ -41,7 +54,7 @@ export default function Layout() {
                 <div className="fixed inset-0 flex z-40 md:hidden">
                     <div className="fixed inset-0 bg-gray-900/50 backdrop-blur-sm transition-opacity" onClick={() => setSidebarOpen(false)}></div>
                     <div className="relative flex-1 flex flex-col max-w-xs w-full bg-white shadow-xl">
-                        <div className="absolute top-0 right-0 -mr-12 pt-2">
+                        <div className="absolute top-12 right-0 -mr-12 pt-2">
                             <button
                                 type="button"
                                 className="ml-1 flex items-center justify-center h-10 w-10 rounded-full focus:outline-none focus:ring-2 focus:ring-inset focus:ring-white"
@@ -50,7 +63,7 @@ export default function Layout() {
                                 <X className="h-6 w-6 text-white" />
                             </button>
                         </div>
-                        <div className="flex-1 h-0 pt-5 pb-4 overflow-y-auto">
+                        <div className="flex-1 h-0 pt-16 pb-4 overflow-y-auto">
                             <div className="flex-shrink-0 flex items-center px-4">
                                 <span className="text-2xl font-black text-blue-600 tracking-tighter">DLR<span className="text-gray-900">Portal</span></span>
                             </div>
@@ -76,8 +89,18 @@ export default function Layout() {
                                 ))}
                             </nav>
                         </div>
-                        <div className="flex-shrink-0 flex border-t border-gray-100 p-4 bg-gray-50">
-                            <button onClick={logout} className="flex-shrink-0 group block w-full flex items-center justify-between">
+                        <div className="flex-shrink-0 flex flex-col gap-2 border-t border-gray-100 p-4 bg-gray-50">
+                            <button
+                                onClick={() => {
+                                    setSidebarOpen(false);
+                                    setShowBugModal(true);
+                                }}
+                                className="w-full flex items-center px-4 py-2 text-sm font-bold text-red-600 bg-red-50 hover:bg-red-100 rounded-lg transition-colors border border-red-100"
+                            >
+                                <Bug className="mr-3 h-5 w-5" />
+                                Report an Issue
+                            </button>
+                            <button onClick={handleLogout} className="flex-shrink-0 group block w-full flex items-center justify-between mt-2">
                                 <div className="flex items-center">
                                     <div className="h-10 w-10 rounded-full bg-blue-100 flex items-center justify-center text-blue-700 font-bold">
                                         {user?.full_name?.charAt(0)}
@@ -135,9 +158,14 @@ export default function Layout() {
                                         <p className="text-sm font-bold text-white leading-none">{user?.full_name || user?.email}</p>
                                         {isManagement && <span className="bg-green-400 text-black text-[8px] font-bold px-1 rounded">PRO</span>}
                                     </div>
-                                    <button onClick={logout} className="text-[10px] font-medium text-blue-300 hover:text-white mt-1 border-b border-blue-600">
-                                        Sign Out
-                                    </button>
+                                    <div className="flex items-center gap-3 mt-1">
+                                        <button onClick={handleLogout} className="text-[10px] font-medium text-blue-300 hover:text-white border-b border-blue-600">
+                                            Sign Out
+                                        </button>
+                                        <button onClick={() => setShowBugModal(true)} className="text-[10px] font-medium text-red-300 hover:text-white border-b border-red-500 whitespace-nowrap">
+                                            Report Issue
+                                        </button>
+                                    </div>
                                 </div>
                             </div>
                         </div>
@@ -147,10 +175,10 @@ export default function Layout() {
 
             {/* Main content area */}
             <div className="flex flex-col w-0 flex-1 overflow-hidden">
-                <div className="md:hidden pl-1 pt-1 sm:pl-3 sm:pt-3">
+                <div className="md:hidden pl-2 pt-10 sm:pl-3 sm:pt-10">
                     <button
                         type="button"
-                        className="-ml-0.5 -mt-0.5 h-12 w-12 inline-flex items-center justify-center rounded-md text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
+                        className="h-12 w-12 inline-flex items-center justify-center rounded-md text-gray-500 hover:text-gray-900 focus:outline-none focus:ring-2 focus:ring-inset focus:ring-indigo-500"
                         onClick={() => setSidebarOpen(true)}
                     >
                         <span className="sr-only">Open sidebar</span>
@@ -161,6 +189,12 @@ export default function Layout() {
                     <Outlet />
                 </main>
             </div>
+
+            <BugReportModal
+                isOpen={showBugModal}
+                onClose={() => setShowBugModal(false)}
+                user={user}
+            />
         </div>
     );
 }
