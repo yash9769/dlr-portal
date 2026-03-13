@@ -11,6 +11,7 @@ export default function AttendanceTaker() {
     const [loading, setLoading] = useState(true);
     const [timetableEntry, setTimetableEntry] = useState(null);
     const [selectedStudents, setSelectedStudents] = useState(new Set());
+    const [selectedBatch, setSelectedBatch] = useState('All');
 
     // Key for local storage persistence
     const today = new Date().toISOString().split('T')[0];
@@ -25,12 +26,16 @@ export default function AttendanceTaker() {
                 setTimetableEntry(entry);
 
                 if (entry) {
-                    // Fetch real students for this division (and batch if it's a lab)
+                    // Fetch all students for this division to allow batch filtering
                     const { data: studentData } = await api.students.list({
-                        division: entry.division,
-                        batch: entry.batch // This will filter if batch is set, otherwise returns div
+                        division: entry.division
                     });
                     setStudents(studentData || []);
+
+                    // Set default filter if entry has a batch
+                    if (entry.batch) {
+                        setSelectedBatch(entry.batch);
+                    }
 
                     // Load saved attendance from local storage
                     const saved = localStorage.getItem(storageKey);
@@ -49,6 +54,12 @@ export default function AttendanceTaker() {
         loadData();
     }, [id, storageKey]);
 
+    const filteredStudents = selectedBatch === 'All'
+        ? students
+        : students.filter(s => s.batch === selectedBatch);
+
+    const availableBatches = ['All', ...new Set(students.map(s => s.batch).filter(Boolean))].sort();
+
     const toggleStudent = (studentId) => {
         const newSelected = new Set(selectedStudents);
         if (newSelected.has(studentId)) {
@@ -62,13 +73,17 @@ export default function AttendanceTaker() {
 
     const markAll = (present) => {
         if (present) {
-            const allIds = students.map(s => s.id);
-            const newSet = new Set(allIds);
+            const allIds = filteredStudents.map(s => s.id);
+            const newSet = new Set([...selectedStudents, ...allIds]);
             setSelectedStudents(newSet);
             saveToStorage(newSet);
         } else {
-            setSelectedStudents(new Set());
-            saveToStorage(new Set());
+            // Only reset visible students or reset all? 
+            // Resetting only visible seems more intuitive for "filtering"
+            const visibleIds = new Set(filteredStudents.map(s => s.id));
+            const newSet = new Set([...selectedStudents].filter(id => !visibleIds.has(id)));
+            setSelectedStudents(newSet);
+            saveToStorage(newSet);
         }
     };
 
@@ -130,27 +145,48 @@ export default function AttendanceTaker() {
                 <div className="flex gap-2 mb-4">
                     <button
                         onClick={() => markAll(true)}
-                        className="flex-1 py-2 bg-blue-50 text-blue-600 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-blue-100 transition-colors"
+                        className="flex-1 py-2 bg-blue-50 text-blue-600 text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-blue-100 transition-colors"
                     >
-                        Mark All Present
+                        Mark Visible Present
                     </button>
                     <button
                         onClick={() => markAll(false)}
-                        className="flex-1 py-2 bg-gray-100 text-gray-600 text-xs font-bold uppercase tracking-wider rounded-xl hover:bg-gray-200 transition-colors"
+                        className="flex-1 py-2 bg-gray-100 text-gray-600 text-[10px] font-bold uppercase tracking-wider rounded-xl hover:bg-gray-200 transition-colors"
                     >
-                        Reset
+                        Reset Visible
                     </button>
                 </div>
 
+                {/* Batch Filter */}
+                {availableBatches.length > 1 && (
+                    <div className="mb-6">
+                        <p className="text-[10px] text-gray-400 font-bold uppercase tracking-widest mb-3">Filter by Batch</p>
+                        <div className="flex gap-2 overflow-x-auto pb-2 scrollbar-none">
+                            {availableBatches.map(batch => (
+                                <button
+                                    key={batch}
+                                    onClick={() => setSelectedBatch(batch)}
+                                    className={`px-4 py-2 rounded-xl text-xs font-bold transition-all whitespace-nowrap ${selectedBatch === batch
+                                            ? 'bg-gray-900 text-white shadow-lg'
+                                            : 'bg-white text-gray-500 border border-gray-100 hover:bg-gray-50'
+                                        }`}
+                                >
+                                    {batch === 'All' ? 'All Students' : `Batch ${batch}`}
+                                </button>
+                            ))}
+                        </div>
+                    </div>
+                )}
+
                 {/* List */}
                 <div className="bg-white rounded-3xl shadow-sm border border-gray-100 overflow-hidden">
-                    {students.length === 0 ? (
+                    {filteredStudents.length === 0 ? (
                         <div className="p-10 text-center">
                             <Users className="h-10 w-10 text-gray-200 mx-auto mb-2" />
-                            <p className="text-gray-400 text-sm">No students found for {timetableEntry.division} {timetableEntry.batch ? ` (Batch ${timetableEntry.batch})` : ''}</p>
+                            <p className="text-gray-400 text-sm">No students found for {timetableEntry.division} {selectedBatch !== 'All' ? ` (Batch ${selectedBatch})` : ''}</p>
                         </div>
                     ) : (
-                        students.map((student) => {
+                        filteredStudents.map((student) => {
                             const isSelected = selectedStudents.has(student.id);
                             return (
                                 <div

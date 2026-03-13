@@ -528,33 +528,104 @@ const formatTime = (timeStr) => {
     }
 };
 
-export const exportToExcel = (entries) => {
-    // Format data for Excel
-    const data = entries.map(e => ({
-        'Day': e.day_of_week || 'N/A',
-        'Start Time': e.start_time || '00:00',
-        'End Time': e.end_time || '00:00',
-        'Subject': e.subject_name || 'Untitled',
-        'Subject Type': e.subject_type || 'IT',
-        'Faculty': typeof e.assigned_faculty === 'string' ? e.assigned_faculty : (e.assigned_faculty?.name || 'Unassigned'),
-        'Room': e.room_no || 'TBD',
-        'Semester': e.semester || 'VI',
-        'Division': e.division || 'A',
-        'Batch': e.batch || '',
-        'Batch Strength': e.batch_strength || 60
-    }));
-
-    // Create workbook and worksheet
-    const worksheet = utils.json_to_sheet(data);
+export const exportToExcel = (entries, facultyList = []) => {
     const workbook = utils.book_new();
-    utils.book_append_sheet(workbook, worksheet, "Timetable");
+    const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+    const timeSlots = ['09:00', '10:00', '11:00', '12:00', '13:00', '14:00', '15:00', '16:00', '17:00'];
 
-    // Fix column widths
-    const maxWidths = Object.keys(data[0] || {}).map(key => ({
-        wch: Math.max(key.length, ...data.map(row => String(row[key]).length)) + 2
-    }));
-    worksheet['!cols'] = maxWidths;
+    const yearMap = {
+        'I': 'FE', 'II': 'FE',
+        'III': 'SE', 'IV': 'SE',
+        'V': 'TE', 'VI': 'TE',
+        'VII': 'BE', 'VIII': 'BE'
+    };
 
-    // Generate and download file
+    // Group by Semester-Division
+    const groups = entries.reduce((acc, e) => {
+        const key = `${e.semester}-${e.division}`;
+        if (!acc[key]) acc[key] = [];
+        acc[key].push(e);
+        return acc;
+    }, {});
+
+    Object.keys(groups).sort().forEach(divKey => {
+        const [sem, div] = divKey.split('-');
+        const divEntries = groups[divKey];
+        const year = yearMap[sem] || '??';
+        const sheetName = `${year}_SEM${sem}_DIV${div}`.slice(0, 31); // Excel sheet name limit
+
+        // Prepare AOA (Array of Arrays)
+        const aoa = [
+            [`INFT DEPARTMENT TIMETABLE - ${year} SEMESTER ${sem} DIV ${div}`],
+            [''], // Spacer
+            ['Time / Day', ...days]
+        ];
+
+        const merges = [
+            { s: { r: 0, c: 0 }, e: { r: 0, c: days.length } } // Merge title
+        ];
+
+        timeSlots.forEach((time, rIdx) => {
+            const row = [time];
+            days.forEach((day, cIdx) => {
+                const lectures = divEntries.filter(e =>
+                    e.day_of_week === day &&
+                    e.start_time?.startsWith(time.split(':')[0])
+                );
+
+                if (lectures.length > 0) {
+                    const cellValue = lectures.map(l => {
+                        const fac = typeof l.assigned_faculty === 'string' ? l.assigned_faculty : (l.assigned_faculty?.name || 'Unassigned');
+                        const batchInfo = l.batch ? `(${l.batch})` : '';
+                        return `${l.subject_name} ${batchInfo}\n${fac}\nRoom: ${l.room_no}`;
+                    }).join('\n---\n');
+                    row.push(cellValue);
+
+                    // Check for 2-hour merge (Lecture/Lab spanning next slot)
+                    const isLong = lectures.some(l => {
+                        const startH = parseInt(l.start_time?.split(':')[0]);
+                        const endH = parseInt(l.end_time?.split(':')[0]);
+                        return endH - startH > 1;
+                    });
+
+                    if (isLong) {
+                        merges.push({
+                            s: { r: rIdx + 3, c: cIdx + 1 }, // +3 because of title, spacer, header rows
+                            e: { r: rIdx + 4, c: cIdx + 1 }
+                        });
+                    }
+                } else {
+                    row.push('');
+                }
+            });
+            aoa.push(row);
+        });
+
+        const worksheet = utils.aoa_to_sheet(aoa);
+        worksheet['!merges'] = merges;
+
+        // Column Widths
+        const wscols = [
+            { wch: 15 }, // Time column
+            ...days.map(() => ({ wch: 25 })) // Day columns
+        ];
+        worksheet['!cols'] = wscols;
+
+        // Row Heights (approximate for multi-line content)
+        worksheet['!rows'] = aoa.map((row, i) => {
+            if (i < 3) return { hpt: 25 };
+            const maxLines = Math.max(...row.map(cell => String(cell).split('\n').length));
+            return { hpt: Math.max(40, maxLines * 15) };
+        });
+
+        utils.book_append_sheet(workbook, worksheet, sheetName);
+    });
+
+    if (Object.keys(groups).length === 0) {
+        // Fallback for empty data
+        const ws = utils.aoa_to_sheet([['No data found']]);
+        utils.book_append_sheet(workbook, ws, "Empty");
+    }
+
     writeFile(workbook, `Timetable_Export_${new Date().toISOString().split('T')[0]}.xlsx`);
 };

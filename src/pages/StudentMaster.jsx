@@ -14,6 +14,7 @@ export default function StudentMaster() {
     const [filters, setFilters] = useState({
         division: '',
         year: '',
+        batch: '',
         search: ''
     });
 
@@ -66,53 +67,202 @@ export default function StudentMaster() {
         }
     };
 
+    const handleClearAll = async () => {
+        if (!confirm('CRITICAL: This will permanently delete ALL student records. This action cannot be undone. Are you absolutely sure?')) return;
+        if (!confirm('Final confirmation: Delete all students for academic year reset?')) return;
+
+        setLoading(true);
+        try {
+            await api.students.deleteAll();
+            toast.success('All student records cleared');
+            loadStudents();
+        } catch (error) {
+            console.error(error);
+            toast.error('Failed to clear students: ' + (error.message || 'Unknown error'));
+        } finally {
+            setLoading(false);
+        }
+    };
+
+    const handleExport = () => {
+        if (filteredStudents.length === 0) {
+            toast.error('No data to export');
+            return;
+        }
+
+        const data = filteredStudents.map(s => ({
+            'Roll No': s.roll_no,
+            'Name': s.name,
+            'Year': s.year,
+            'Division': s.division,
+            'Batch': s.batch || 'N/A',
+            'Branch': s.branch
+        }));
+
+        const ws = XLSX.utils.json_to_sheet(data);
+        const wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, "Students");
+
+        const fileName = `StudentMaster_${filters.year || 'ALL'}_${filters.division || 'ALL'}_${new Date().toISOString().split('T')[0]}.xlsx`;
+        XLSX.writeFile(wb, fileName);
+        toast.success('Exported to Excel');
+    };
+
     const handleFileUpload = async (e) => {
         const file = e.target.files[0];
         if (!file) return;
 
         setImporting(true);
-        const toastId = toast.loading('Reading file...');
+        const toastId = toast.loading('Reading workbook...');
 
         try {
             const data = await file.arrayBuffer();
             const workbook = XLSX.read(data);
-            const worksheet = workbook.Sheets[workbook.SheetNames[0]];
-            const jsonData = XLSX.utils.sheet_to_json(worksheet);
+            let allImportedStudents = [];
 
-            // Map keys (handle common variations)
-            const mappedStudents = jsonData.map(row => {
-                const roll = row['Roll No'] || row['Roll'] || row['roll_no'] || row['RollNo'];
-                const name = row['Name'] || row['Student Name'] || row['Full Name'];
-                const div = row['Division'] || row['Div'] || newStudent.division;
-                const year = row['Year'] || newStudent.year;
+            // 1. Identify Year from filename
+            const fileName = file.name.toUpperCase();
+            let detectedYear = '';
+            if (fileName.includes('FE')) detectedYear = 'FE';
+            else if (fileName.includes('SE')) detectedYear = 'SE';
+            else if (fileName.includes('TE')) detectedYear = 'TE';
+            else if (fileName.includes('BE')) detectedYear = 'BE';
 
-                if (!roll || !name) return null;
+            // Ask user to confirm year for the WHOLE file to be safe
+            const finalYear = prompt(`Detected Year: ${detectedYear || 'Unknown'}. Please confirm the Year (FE/SE/TE/BE) for this file:`, detectedYear || 'TE');
 
-                return {
-                    roll_no: roll.toString(),
-                    name: name,
-                    division: div.toString().toUpperCase(),
-                    year: year.toString().toUpperCase(),
-                    branch: row['Branch'] || 'IT',
-                    batch: row['Batch'] || row['batch'] || ''
-                };
-            }).filter(Boolean);
+            if (!finalYear || !['FE', 'SE', 'TE', 'BE'].includes(finalYear.toUpperCase())) {
+                toast.error('Invalid year. Import cancelled.', { id: toastId });
+                setImporting(false);
+                return;
+            }
+            const academicYear = finalYear.toUpperCase();
 
-            if (mappedStudents.length === 0) {
+            for (const sheetName of workbook.SheetNames) {
+                const worksheet = workbook.Sheets[sheetName];
+                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, defval: '' });
+
+                if (jsonData.length === 0) continue;
+
+                // Identify Division and Batch from sheet name
+                let sheetDivision = 'A';
+                let sheetBatch = null;
+
+                const nameUpper = sheetName.toUpperCase();
+
+                // If sheet name is something like "B1" or "BATCH 1"
+                const sheetBatchMatch = nameUpper.match(/BATCH\s?(\d|I+)/) || nameUpper.match(/\bB(\d)\b/);
+                if (sheetBatchMatch) {
+                    let b = sheetBatchMatch[1];
+                    if (b === 'I') b = '1';
+                    sheetBatch = 'B' + b;
+                }
+
+                // Try to find Division (A-D)
+                const divMatch = nameUpper.match(/\b([A-D])\b/);
+                if (divMatch) {
+                    sheetDivision = divMatch[1];
+                }
+
+                console.log(`Parsing Sheet: ${sheetName} -> Div: ${sheetDivision}, Batch: ${sheetBatch || 'None'}`);
+
+                // Find Header Row
+                let headerRow = -1;
+                let rollIdx = -1, nameIdx = -1;
+
+                for (let i = 0; i < Math.min(jsonData.length, 50); i++) {
+                    const row = (jsonData[i] || []).map(v => String(v || '').toLowerCase().trim());
+
+                    // Specific search for Roll No
+                    let roll = row.findIndex(v => v === 'roll no' || v === 'rollno' || v === 'roll' || v === 'roll_no');
+                    if (roll === -1) roll = row.findIndex(v => v.includes('roll') && !v.includes('name'));
+
+                    // Specific search for Name
+                    let name = row.findIndex(v => v === 'name' || v === 'student name' || v === 'candidate name' || v === 'student_name');
+                    if (name === -1) name = row.findIndex(v => v.includes('name') && !v.includes('roll'));
+                    if (name === -1) name = row.findIndex(v => v.includes('student') && !v.includes('roll'));
+
+                    if (roll !== -1 && name !== -1 && roll !== name) {
+                        headerRow = i;
+                        rollIdx = roll;
+                        nameIdx = name;
+                        break;
+                    }
+                }
+
+                if (headerRow === -1) continue;
+
+                let currentBatch = sheetBatch; // Start with sheet-level batch
+
+                for (let i = headerRow + 1; i < jsonData.length; i++) {
+                    const row = jsonData[i];
+                    if (!row || row.length === 0) continue;
+
+                    const rollVal = String(row[rollIdx] || '').trim();
+                    const nameVal = String(row[nameIdx] || '').trim();
+
+                    // Detect Batch Indicators in Row
+                    const rowStr = row.join(' ');
+                    if (rowStr.includes('Batch') || rowStr.includes('Group') || /\bB[1-4]\b/.test(rowStr)) {
+                        const batchMatch = rowStr.match(/Batch\s?(\d|I+)/i) || rowStr.match(/\bB(\d)\b/i) || rowStr.match(/Group\s?(\d)/i);
+                        if (batchMatch) {
+                            let b = batchMatch[1].toUpperCase();
+                            if (b === 'I') b = '1';
+                            currentBatch = 'B' + b;
+                        }
+                        // Don't continue if there's a roll number in this row too (rare but possible)
+                        if (!rollVal || !/\d/.test(rollVal)) continue;
+                    }
+
+                    // Skip invalid roll numbers
+                    if (!rollVal || rollVal === 'undefined' || rollVal === 'null' || !/\d/.test(rollVal)) {
+                        continue;
+                    }
+
+                    allImportedStudents.push({
+                        roll_no: rollVal,
+                        name: nameVal,
+                        division: sheetDivision,
+                        year: academicYear,
+                        branch: 'IT',
+                        batch: currentBatch || null
+                    });
+                }
+            }
+
+            if (allImportedStudents.length === 0) {
                 toast.error('No valid student data found in file', { id: toastId });
                 return;
             }
 
-            if (confirm(`Found ${mappedStudents.length} students. Import them?`)) {
-                await api.students.bulkCreate(mappedStudents);
-                toast.success(`Successfully imported ${mappedStudents.length} students`, { id: toastId });
-                loadStudents();
-            } else {
-                toast.dismiss(toastId);
+            // Deduplicate: If the same student (Roll + Year + Div) appears twice in the SAME file, 
+            // PostgREST upsert will fail with "cannot affect row a second time".
+            // Priority: Keep the record that HAS a batch if duplicates are found.
+            const uniqueStudentsMap = new Map();
+            for (const s of allImportedStudents) {
+                const key = `${s.roll_no}-${s.year}-${s.division}`.toUpperCase();
+                if (!uniqueStudentsMap.has(key) || (!uniqueStudentsMap.get(key).batch && s.batch)) {
+                    uniqueStudentsMap.set(key, s);
+                }
             }
+            const uniqueStudents = Array.from(uniqueStudentsMap.values());
+
+            const proceed = confirm(`Found ${uniqueStudents.length} unique students for ${academicYear}.\nReady to IMPORT (Append) these records?`);
+
+            if (!proceed) {
+                toast.dismiss(toastId);
+                setImporting(false);
+                return;
+            }
+
+            toast.loading(`Uploading ${uniqueStudents.length} students...`, { id: toastId });
+            await api.students.bulkCreate(uniqueStudents);
+
+            toast.success(`Successfully imported ${uniqueStudents.length} students for ${academicYear}`, { id: toastId });
+            loadStudents();
         } catch (error) {
             console.error(error);
-            toast.error('Import failed: ' + error.message, { id: toastId });
+            toast.error('Import failed: ' + (error.message || 'Unknown error'), { id: toastId });
         } finally {
             setImporting(false);
             if (fileInputRef.current) fileInputRef.current.value = '';
@@ -122,14 +272,16 @@ export default function StudentMaster() {
     const filteredStudents = students.filter(s => {
         const matchDiv = !filters.division || s.division === filters.division;
         const matchYear = !filters.year || s.year === filters.year;
+        const matchBatch = !filters.batch || s.batch === filters.batch;
         const matchSearch = !filters.search ||
             s.name.toLowerCase().includes(filters.search.toLowerCase()) ||
             s.roll_no.toString().includes(filters.search);
-        return matchDiv && matchYear && matchSearch;
+        return matchDiv && matchYear && matchBatch && matchSearch;
     }).sort((a, b) => a.roll_no.localeCompare(b.roll_no, undefined, { numeric: true }));
 
     const years = ['FE', 'SE', 'TE', 'BE'];
     const divisions = ['A', 'B', 'C', 'D'];
+    const batches = ['B1', 'B2', 'B3', 'B4'];
 
     return (
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
@@ -147,11 +299,25 @@ export default function StudentMaster() {
                         accept=".xlsx, .xls"
                     />
                     <button
+                        onClick={handleExport}
+                        className="bg-white border border-gray-200 text-gray-700 px-4 py-2 rounded-xl flex items-center text-sm font-bold hover:bg-gray-50 transition-all"
+                    >
+                        <Download className="h-4 w-4 mr-2" />
+                        Export
+                    </button>
+                    <button
                         onClick={() => fileInputRef.current.click()}
-                        className="bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-xl flex items-center text-sm font-bold transition-all shadow-lg shadow-green-100"
+                        className="bg-gray-900 border border-transparent text-white px-4 py-2 rounded-xl flex items-center text-sm font-bold hover:bg-black transition-all shadow-lg shadow-gray-200"
                     >
                         <Upload className="h-4 w-4 mr-2" />
-                        Import Excel
+                        Quick Import
+                    </button>
+                    <button
+                        onClick={handleClearAll}
+                        className="bg-red-50 text-red-600 px-4 py-2 rounded-xl flex items-center text-sm font-bold hover:bg-red-100 transition-all"
+                    >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Clear All
                     </button>
                 </div>
             </div>
@@ -255,6 +421,14 @@ export default function StudentMaster() {
                 >
                     <option value="">All Divisions</option>
                     {divisions.map(d => <option key={d} value={d}>{d}</option>)}
+                </select>
+                <select
+                    className="border-gray-200 border rounded-xl px-4 py-2 text-sm focus:ring-2 focus:ring-blue-500 outline-none"
+                    value={filters.batch}
+                    onChange={e => setFilters({ ...filters, batch: e.target.value })}
+                >
+                    <option value="">All Batches</option>
+                    {batches.map(b => <option key={b} value={b}>{b}</option>)}
                 </select>
             </div >
 

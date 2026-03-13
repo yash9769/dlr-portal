@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
-import { useAuth } from '../context/AuthContext';
+import { useAuth } from '../context/useAuth';
 import { Lock, Mail } from 'lucide-react';
+import { toast } from 'react-hot-toast';
 
 export default function Login() {
     const [email, setEmail] = useState('');
@@ -15,19 +16,28 @@ export default function Login() {
 
     const [submitting, setSubmitting] = useState(false);
 
-    // ... rest of header code
-
     const handleSubmit = async (e) => {
         e.preventDefault();
         setError('');
         setSubmitting(true);
         try {
+            console.log('Login attempt started for:', email);
             const result = await login(email, password);
+            console.log('Login result:', result);
+
             if (result.success) {
+                toast.success('Successfully logged in!');
                 navigate(from, { replace: true });
             } else {
-                setError(result.error.message);
+                const errorMessage = result.error?.message || result.error || 'Invalid login credentials';
+                setError(errorMessage);
+                toast.error(errorMessage);
             }
+        } catch (err) {
+            console.error('Login crash error:', err);
+            const genericError = `CRASH: ${err.message || 'Unknown error'}`;
+            setError(genericError);
+            toast.error(genericError);
         } finally {
             setSubmitting(false);
         }

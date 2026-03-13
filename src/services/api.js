@@ -4,24 +4,29 @@ import { Capacitor } from '@capacitor/core';
 export const api = {
     auth: {
         login: async (email, password) => {
-            const { data, error } = await supabase.auth.signInWithPassword({
-                email,
-                password,
-            });
-            if (error) throw error;
-            // Fetch profile data to get role
-            if (data.user) {
-                const { data: profile, error: profileError } = await supabase
-                    .from('profiles')
-                    .select('*')
-                    .eq('id', data.user.id)
-                    .maybeSingle(); // Use maybeSingle to avoid 406 errors
-                if (profileError) console.error('Profile fetch error:', profileError);
+            try {
+                const { data, error } = await supabase.auth.signInWithPassword({
+                    email,
+                    password,
+                });
+                if (error) return { user: null, error };
 
-                const userWithRole = { ...data.user, ...(profile || {}) };
-                return { user: userWithRole, error: null };
+                // Fetch profile data to get role
+                if (data.user) {
+                    const { data: profile, error: profileError } = await supabase
+                        .from('profiles')
+                        .select('*')
+                        .eq('id', data.user.id)
+                        .maybeSingle();
+                    if (profileError) console.error('Profile fetch error:', profileError);
+
+                    const userWithRole = { ...data.user, ...(profile || {}) };
+                    return { user: userWithRole, error: null };
+                }
+                return { user: null, error: null };
+            } catch (err) {
+                return { user: null, error: err };
             }
-            return { user: null, error: null };
         },
         logout: async () => {
             return await supabase.auth.signOut();
@@ -224,18 +229,40 @@ export const api = {
             return { data };
         },
         list: async () => {
-            const { data, error } = await supabase
-                .from('bug_reports')
-                .select(`
-                    *,
-                    profiles!user_id (
-                        full_name,
-                        email
-                    )
-                `)
-                .order('created_at', { ascending: false });
-            if (error) throw error;
-            return { data };
+            try {
+                // 1. Fetch bug reports first
+                const { data: reports, error: reportsError } = await supabase
+                    .from('bug_reports')
+                    .select('*')
+                    .order('created_at', { ascending: false });
+
+                if (reportsError) throw reportsError;
+                if (!reports || reports.length === 0) return { data: [] };
+
+                // 2. Collect unique user IDs
+                const userIds = [...new Set(reports.map(r => r.user_id))].filter(Boolean);
+
+                // 3. Fetch profiles for these users
+                const { data: profiles, error: profilesError } = await supabase
+                    .from('profiles')
+                    .select('id, full_name, email')
+                    .in('id', userIds);
+
+                if (profilesError) {
+                    console.warn('Could not fetch profiles for bug reports:', profilesError);
+                }
+
+                // 4. Merge profiles into reports
+                const mergedData = reports.map(report => ({
+                    ...report,
+                    profiles: profiles?.find(p => p.id === report.user_id) || null
+                }));
+
+                return { data: mergedData };
+            } catch (err) {
+                console.error('Bugs list fetch failed:', err);
+                throw err;
+            }
         },
         updateStatus: async (id, status) => {
             const updates = { status };
@@ -273,9 +300,19 @@ export const api = {
             return { error: null };
         },
         bulkCreate: async (students) => {
-            const { data, error } = await supabase.from('students').insert(students);
+            const { data, error } = await supabase
+                .from('students')
+                .upsert(students, {
+                    onConflict: 'roll_no,division,year',
+                    ignoreDuplicates: false
+                });
             if (error) throw error;
             return { data };
+        },
+        deleteAll: async () => {
+            const { error } = await supabase.from('students').delete().not('id', 'is', null);
+            if (error) throw error;
+            return { error: null };
         }
     }
 };

@@ -40,6 +40,7 @@ export default function AppRouter() {
                 <Route path="/bugs" element={<BugReports />} />
             </Route>
 
+            <Route path="/debug-test" element={<div className="p-10 text-2xl font-bold bg-green-100 min-h-screen">Router is reaching /debug-test!</div>} />
             <Route path="*" element={<Navigate to="/" replace />} />
         </Routes>
     );

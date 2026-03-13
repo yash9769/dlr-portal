@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { api } from '../services/api';
-import { Plus, Trash2, Save, Upload, FileText, AlertCircle, Check, Download, MapPin, Clock, Calculator } from 'lucide-react';
+import { Plus, Trash2, Save, Upload, FileText, AlertCircle, Check, Download, MapPin, Clock, Calculator, Search, Printer } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { parseExcelTimetable, mapToTimetableSchema, parsePDFTimetable, exportToExcel } from '../utils/timetableParser';
 
@@ -262,26 +262,53 @@ export default function TimetableManager() {
                     <button
                         onClick={() => fileInputRef.current.click()}
                         disabled={importing}
-                        className="flex-1 lg:flex-none justify-center bg-green-600 hover:bg-green-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm"
+                        className="flex-1 lg:flex-none justify-center bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl flex items-center transition-all border border-gray-200 shadow-sm font-bold text-xs uppercase tracking-widest"
                     >
-                        <Upload className="h-4 w-4 mr-2" />
+                        <Upload className="h-4 w-4 mr-2 text-green-600" />
                         Bulk Import
                     </button>
                     <button
                         onClick={() => {
                             try {
-                                exportToExcel(entries);
+                                exportToExcel(filteredEntries);
                                 toast.success('Excel file generated!');
                             } catch (err) {
                                 console.error('Export error:', err);
                                 toast.error('Failed to export Excel: ' + err.message);
                             }
                         }}
-                        disabled={entries.length === 0}
-                        className="flex-1 lg:flex-none justify-center bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                        disabled={filteredEntries.length === 0}
+                        className="flex-1 lg:flex-none justify-center bg-white hover:bg-gray-50 text-gray-700 px-4 py-2 rounded-xl flex items-center transition-all border border-gray-200 shadow-sm font-bold text-xs uppercase tracking-widest disabled:opacity-50"
                     >
-                        <Download className="h-4 w-4 mr-2" />
+                        <Download className="h-4 w-4 mr-2 text-blue-600" />
                         Export Excel
+                    </button>
+                    <button
+                        onClick={async () => {
+                            const target = filters.division ? `DIV ${filters.semester}-${filters.division}` : 'ALL entries';
+                            if (!confirm(`Are you sure you want to clear ${target}? This cannot be undone.`)) return;
+
+                            try {
+                                setLoading(true);
+                                // If filtered, we delete one by one or via a new RPC if exists. 
+                                // For now, we use the existing delete in a loop if filtered, or a full clear if not.
+                                // But let's keep it safe.
+                                for (const e of filteredEntries) {
+                                    await api.timetable.delete(e.id);
+                                }
+                                toast.success('Cleared successfully');
+                                loadData();
+                            } catch (err) {
+                                toast.error('Failed to clear');
+                            } finally {
+                                setLoading(false);
+                            }
+                        }}
+                        disabled={filteredEntries.length === 0}
+                        className="flex-1 lg:flex-none justify-center bg-white hover:bg-red-50 text-gray-700 hover:text-red-600 px-4 py-2 rounded-xl flex items-center transition-all border border-gray-200 shadow-sm font-bold text-xs uppercase tracking-widest disabled:opacity-50"
+                    >
+                        <Trash2 className="h-4 w-4 mr-2" />
+                        Clear {filters.division ? 'Filtered' : 'All'}
                     </button>
                     <button
                         onClick={() => {
@@ -289,24 +316,11 @@ export default function TimetableManager() {
                             toast.success('Preparing PDF layout...');
                             setTimeout(() => window.print(), 500);
                         }}
-                        disabled={entries.length === 0}
-                        className="flex-1 lg:flex-none justify-center bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-lg flex items-center transition-colors shadow-sm disabled:opacity-50"
+                        disabled={filteredEntries.length === 0}
+                        className="flex-1 lg:flex-none justify-center bg-gray-900 hover:bg-black text-white px-4 py-2 rounded-xl flex items-center transition-all shadow-lg font-bold text-xs uppercase tracking-widest disabled:opacity-50"
                     >
-                        <FileText className="h-4 w-4 mr-2" />
-                        Download PDF
-                    </button>
-                    <button
-                        onClick={() => {
-                            if (confirm('Are you sure? This will delete all current slots!')) {
-                                entries.forEach(e => api.timetable.delete(e.id));
-                                setTimeout(loadData, 1000);
-                                toast.success('Clearing timetable...');
-                            }
-                        }}
-                        className="flex-1 lg:flex-none justify-center text-red-600 border border-red-200 hover:bg-red-50 px-4 py-2 rounded-lg flex items-center transition-colors"
-                    >
-                        <Trash2 className="h-4 w-4 mr-2" />
-                        Clear All
+                        <Printer className="h-4 w-4 mr-2" />
+                        Print / PDF
                     </button>
                 </div>
             </div>
@@ -490,96 +504,94 @@ export default function TimetableManager() {
             </div>
 
             {/* FILTERS & SORTING */}
-            <div className="bg-white p-4 rounded-lg shadow-sm border border-gray-100 mb-6 font-medium text-gray-700">
-                <div className="grid grid-cols-2 md:grid-cols-4 lg:grid-cols-6 gap-4 items-end">
-                    {/* Filter Faculty */}
-                    <div className="col-span-1">
-                        <label className="block text-xs text-gray-500 mb-1">Faculty</label>
-                        <select
-                            className="w-full border border-gray-300 p-2 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                            value={filters.faculty}
-                            onChange={e => setFilters({ ...filters, faculty: e.target.value })}
-                        >
-                            <option value="">All</option>
-                            {facultyList.map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
-                        </select>
+            <div className="bg-white p-6 rounded-[2rem] shadow-sm border border-gray-100 mb-8 no-print">
+                <div className="flex flex-col lg:flex-row gap-6 items-end">
+                    <div className="flex-1 grid grid-cols-2 md:grid-cols-3 lg:grid-cols-5 gap-4">
+                        {/* Filter Division (Prominent) */}
+                        <div className="col-span-1">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Select Division</label>
+                            <select
+                                className="w-full border-2 border-blue-100 bg-blue-50/50 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 text-blue-700 font-bold transition-all"
+                                value={filters.division}
+                                onChange={e => setFilters({ ...filters, division: e.target.value })}
+                            >
+                                <option value="">All Divisions</option>
+                                {Array.from(new Set(entries.map(e => e.division))).sort().map(d => <option key={d} value={d}>Division {d}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Filter Semester */}
+                        <div className="col-span-1">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Semester</label>
+                            <select
+                                className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500 font-bold"
+                                value={filters.semester}
+                                onChange={e => setFilters({ ...filters, semester: e.target.value })}
+                            >
+                                <option value="">All Semesters</option>
+                                {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'].map(s => <option key={s} value={s}>Semester {s}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Filter Faculty */}
+                        <div className="col-span-1">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Faculty</label>
+                            <select
+                                className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                value={filters.faculty}
+                                onChange={e => setFilters({ ...filters, faculty: e.target.value })}
+                            >
+                                <option value="">All Faculty</option>
+                                {facultyList.sort((a, b) => (a.name || '').localeCompare(b.name || '')).map(f => <option key={f.id} value={f.id}>{f.name}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Filter Day */}
+                        <div className="col-span-1">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Day</label>
+                            <select
+                                className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                value={filters.day}
+                                onChange={e => setFilters({ ...filters, day: e.target.value })}
+                            >
+                                <option value="">All Days</option>
+                                {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
+                            </select>
+                        </div>
+
+                        {/* Filter Room */}
+                        <div className="col-span-1">
+                            <label className="block text-[10px] font-black text-gray-400 uppercase tracking-widest mb-2">Room / Search</label>
+                            <input
+                                placeholder="Search slots..."
+                                className="w-full border border-gray-200 p-2.5 rounded-xl text-sm outline-none focus:ring-2 focus:ring-blue-500"
+                                value={filters.room}
+                                onChange={e => setFilters({ ...filters, room: e.target.value })}
+                            />
+                        </div>
                     </div>
 
-                    {/* Filter Room */}
-                    <div className="col-span-1">
-                        <label className="block text-xs text-gray-500 mb-1">Room</label>
-                        <input
-                            placeholder="Search..."
-                            className="w-full border border-gray-300 p-2 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                            value={filters.room}
-                            onChange={e => setFilters({ ...filters, room: e.target.value })}
-                        />
-                    </div>
-
-                    {/* Filter Sem & Div */}
-                    <div className="col-span-1">
-                        <label className="block text-xs text-gray-500 mb-1">Semester</label>
+                    <div className="flex lg:flex-col gap-2 w-full lg:w-48">
                         <select
-                            className="w-full border border-gray-300 p-2 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                            value={filters.semester}
-                            onChange={e => setFilters({ ...filters, semester: e.target.value })}
-                        >
-                            <option value="">All</option>
-                            {['I', 'II', 'III', 'IV', 'V', 'VI', 'VII', 'VIII'].map(s => <option key={s} value={s}>{s}</option>)}
-                        </select>
-                    </div>
-
-                    <div className="col-span-1">
-                        <label className="block text-xs text-gray-500 mb-1">Division</label>
-                        <select
-                            className="w-full border border-gray-300 p-2 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                            value={filters.division}
-                            onChange={e => setFilters({ ...filters, division: e.target.value })}
-                        >
-                            <option value="">All</option>
-                            {Array.from(new Set(entries.map(e => e.division))).sort().map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Filter Day */}
-                    <div className="col-span-1">
-                        <label className="block text-xs text-gray-500 mb-1">Day</label>
-                        <select
-                            className="w-full border border-gray-300 p-2 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500"
-                            value={filters.day}
-                            onChange={e => setFilters({ ...filters, day: e.target.value })}
-                        >
-                            <option value="">All Days</option>
-                            {['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(d => <option key={d} value={d}>{d}</option>)}
-                        </select>
-                    </div>
-
-                    {/* Sort By */}
-                    <div className="col-span-1">
-                        <label className="block text-xs text-gray-500 mb-1">Sort By</label>
-                        <select
-                            className="w-full border border-blue-200 bg-blue-50 p-2 rounded text-sm outline-none focus:ring-1 focus:ring-blue-500 text-blue-700 font-bold"
+                            className="flex-1 w-full border border-blue-200 bg-blue-50/30 p-2.5 rounded-xl text-xs outline-none focus:ring-2 focus:ring-blue-500 text-blue-600 font-black uppercase tracking-widest"
                             value={sortBy}
                             onChange={e => setSortBy(e.target.value)}
                         >
-                            <option value="day_time">Day & Time</option>
-                            <option value="subject">Subject</option>
-                            <option value="faculty">Faculty</option>
-                            <option value="room">Room No</option>
+                            <option value="day_time">Sort: Timing</option>
+                            <option value="subject">Sort: Subject</option>
+                            <option value="faculty">Sort: Faculty</option>
+                            <option value="room">Sort: Room</option>
                         </select>
+                        <button
+                            onClick={() => {
+                                setFilters({ faculty: '', room: '', division: '', day: '', semester: '' });
+                                setSortBy('day_time');
+                            }}
+                            className="flex-1 w-full text-[10px] font-black text-red-500 hover:text-white hover:bg-red-500 border border-red-200 p-2.5 rounded-xl transition-all uppercase tracking-widest"
+                        >
+                            Reset All
+                        </button>
                     </div>
-                </div>
-
-                <div className="mt-4 flex justify-end">
-                    <button
-                        onClick={() => {
-                            setFilters({ faculty: '', room: '', division: '', day: '', semester: '' });
-                            setSortBy('day_time');
-                        }}
-                        className="text-xs font-bold text-red-500 hover:text-red-700 hover:bg-red-50 px-3 py-1 rounded transition-colors uppercase tracking-wider"
-                    >
-                        Reset All Filters
-                    </button>
                 </div>
             </div>
 
@@ -603,6 +615,7 @@ export default function TimetableManager() {
             {/* TABLE LIST / VISUAL GRID */}
             {viewMode === 'list' ? (
                 <div className="bg-white shadow-sm border border-gray-100 overflow-hidden sm:rounded-lg">
+                    {/* ... list view content ... */}
                     <div className="px-6 py-4 border-b border-gray-100 bg-gray-50 flex justify-between items-center">
                         <h3 className="font-semibold text-gray-700">
                             Current Schedule {filteredEntries.length !== entries.length ? `(${filteredEntries.length} of ${entries.length} slots)` : `(${entries.length} slots)`}
@@ -635,7 +648,7 @@ export default function TimetableManager() {
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap">
                                                 <div className="text-sm font-semibold text-gray-900">{e.subject_name}</div>
-                                                <div className="text-xs text-blue-500">{e.semester} Sem | Div {e.division}</div>
+                                                <div className="text-xs text-blue-500">{e.semester} Sem | Div {e.division} {e.batch ? `| Batch ${e.batch}` : ''}</div>
                                             </td>
                                             <td className="px-6 py-4 whitespace-nowrap text-sm">
                                                 <div className="flex items-center">
@@ -661,87 +674,136 @@ export default function TimetableManager() {
                     </div>
                 </div>
             ) : (
-                <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden printable-grid">
-                    <div className="overflow-x-auto">
-                        <table className="w-full border-collapse">
-                            <thead>
-                                <tr className="bg-gray-50 border-b border-gray-100">
-                                    <th className="p-4 sticky left-0 z-20 bg-gray-50 border-r border-gray-100 min-w-[100px]">
-                                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest text-center">Time</div>
-                                    </th>
-                                    {days.map(day => (
-                                        <th key={day} className="p-4 min-w-[200px] border-r border-gray-50">
-                                            <div className="text-xs font-black text-gray-900 uppercase tracking-tight text-center">{day}</div>
-                                        </th>
-                                    ))}
-                                </tr>
-                            </thead>
-                            <tbody className="divide-y divide-gray-100">
-                                {timeSlots.map((time, timeIdx) => (
-                                    <tr key={time} className="group hover:bg-gray-50/10">
-                                        <td className="p-4 sticky left-0 z-20 bg-white group-hover:bg-gray-50 text-center border-r border-gray-100">
-                                            <div className="text-xs font-black text-gray-900">{time}</div>
-                                            <div className="text-[8px] font-bold text-gray-400 mt-0.5 uppercase">to {timeSlots[timeIdx + 1] || '18:00'}</div>
-                                        </td>
-                                        {days.map(day => {
-                                            const lectures = entries.filter(s =>
-                                                s.day_of_week === day &&
-                                                s.start_time?.startsWith(time.split(':')[0])
-                                            );
+                <div className="space-y-12">
+                    {filters.division && filters.semester ? (
+                        (() => {
+                            const sem = filters.semester;
+                            const div = filters.division;
+                            const divEntries = filteredEntries;
 
-                                            return (
-                                                <td key={`${day}-${time}`} className="p-2 min-w-[200px] border-r border-gray-50 align-top relative">
-                                                    {lectures.length > 0 && (
-                                                        <div className={`grid ${lectures.length > 1 ? 'grid-cols-2' : 'grid-cols-1'} gap-2`}>
-                                                            {lectures.map(lecture => (
-                                                                <div
-                                                                    key={lecture.id}
-                                                                    className={`p-3 rounded-xl border transition-all relative group/card ${(lecture.subject_type || '').toLowerCase().includes('lab')
-                                                                        ? 'bg-green-50/50 border-green-100'
-                                                                        : 'bg-blue-50/50 border-blue-100'
-                                                                        }`}
-                                                                >
-                                                                    <div className="flex justify-between items-start mb-1">
-                                                                        <div className="text-[11px] font-black text-gray-900 leading-tight truncate pr-4">
-                                                                            {lecture.subject_name}
+                            // Derive Year (FE/SE/TE/BE)
+                            const yearMap = {
+                                'I': 'FE', 'II': 'FE',
+                                'III': 'SE', 'IV': 'SE',
+                                'V': 'TE', 'VI': 'TE',
+                                'VII': 'BE', 'VIII': 'BE'
+                            };
+                            const year = yearMap[sem] || '??';
+
+                            return (
+                                <div className="bg-white rounded-[2rem] shadow-sm border border-gray-100 overflow-hidden printable-grid animation-fade-in">
+                                    <div className="bg-gray-50/50 px-8 py-6 border-b border-gray-100 flex justify-between items-center group">
+                                        <h3 className="text-xl font-black text-gray-900 italic uppercase flex items-center gap-3">
+                                            <div className="w-2 h-8 bg-blue-600 rounded-full group-hover:h-10 transition-all"></div>
+                                            {year} - Semester {sem} - Division {div}
+                                        </h3>
+                                        <div className="text-[10px] font-black text-blue-600 bg-blue-50 px-4 py-1.5 rounded-full uppercase tracking-widest border border-blue-100 shadow-sm">
+                                            {divEntries.length} Slots Found
+                                        </div>
+                                    </div>
+                                    <div className="overflow-x-auto">
+                                        <table className="w-full border-collapse">
+                                            <thead>
+                                                <tr className="bg-gray-50/30 border-b border-gray-100">
+                                                    <th className="p-6 sticky left-0 z-20 bg-gray-50 border-r border-gray-100 min-w-[120px]">
+                                                        <div className="text-[10px] font-black text-gray-400 uppercase tracking-widest">Time / Day</div>
+                                                    </th>
+                                                    {days.map(day => (
+                                                        <th key={day} className="p-6 min-w-[240px] border-r border-gray-50/50">
+                                                            <div className="text-sm font-black text-gray-900 uppercase tracking-tight">{day}</div>
+                                                        </th>
+                                                    ))}
+                                                </tr>
+                                            </thead>
+                                            <tbody className="divide-y divide-gray-100">
+                                                {timeSlots.map((time, timeIdx) => (
+                                                    <tr key={time} className="group hover:bg-gray-50/20 transition-colors">
+                                                        <td className="p-6 sticky left-0 z-20 bg-white group-hover:bg-gray-50 text-center border-r border-gray-100">
+                                                            <div className="text-sm font-black text-gray-900 tabular-nums">{time}</div>
+                                                            <div className="text-[10px] font-bold text-gray-400 mt-1 uppercase italic">to {timeSlots[timeIdx + 1] || '18:00'}</div>
+                                                        </td>
+                                                        {days.map(day => {
+                                                            const lectures = divEntries.filter(s =>
+                                                                s.day_of_week === day &&
+                                                                s.start_time?.startsWith(time.split(':')[0])
+                                                            );
+
+                                                            return (
+                                                                <td key={`${day}-${time}`} className="p-3 min-w-[240px] align-top relative border-r border-gray-50/30">
+                                                                    {lectures.length > 0 ? (
+                                                                        <div className={`grid ${lectures.length > 1 ? 'grid-cols-1 xl:grid-cols-2' : 'grid-cols-1'} gap-3`}>
+                                                                            {lectures.map(lecture => (
+                                                                                <div
+                                                                                    key={lecture.id}
+                                                                                    className={`p-4 rounded-2xl border transition-all hover:scale-[1.02] hover:shadow-xl active:scale-95 cursor-pointer flex flex-col gap-2 relative group-item ${(lecture.subject_type || '').toLowerCase().includes('lab')
+                                                                                        ? 'bg-green-50/50 border-green-100 hover:border-green-300'
+                                                                                        : 'bg-blue-50/50 border-blue-100 hover:border-blue-300'
+                                                                                        }`}
+                                                                                >
+                                                                                    <button
+                                                                                        onClick={(e) => { e.stopPropagation(); handleDelete(lecture.id); }}
+                                                                                        className="absolute -top-2 -right-2 w-6 h-6 bg-white border border-red-100 text-red-400 hover:bg-red-500 hover:text-white rounded-full flex items-center justify-center opacity-0 group-item:opacity-100 transition-all shadow-sm z-10"
+                                                                                    >
+                                                                                        <Trash2 className="h-3 w-3" />
+                                                                                    </button>
+
+                                                                                    <div className="flex justify-between items-start gap-2">
+                                                                                        <h4 className="text-sm font-black text-gray-900 leading-tight">
+                                                                                            {lecture.subject_name}
+                                                                                        </h4>
+                                                                                        <span className={`text-[8px] px-2 py-0.5 rounded-lg font-black uppercase whitespace-nowrap ${(lecture.subject_type || '').toLowerCase().includes('lab')
+                                                                                            ? 'bg-green-200 text-green-800'
+                                                                                            : 'bg-blue-200 text-blue-800'
+                                                                                            }`}>
+                                                                                            {lecture.subject_type}
+                                                                                        </span>
+                                                                                    </div>
+
+                                                                                    <div className="flex flex-wrap items-center gap-x-3 gap-y-1">
+                                                                                        <div className="flex items-center text-[10px] font-black text-blue-600">
+                                                                                            <div className="w-1.5 h-1.5 rounded-full bg-blue-600 mr-1.5 ring-2 ring-blue-100"></div>
+                                                                                            {lecture.assigned_faculty?.name || 'Unassigned'}
+                                                                                        </div>
+                                                                                        <div className="flex items-center text-[10px] font-bold text-gray-500">
+                                                                                            <MapPin className="h-3 w-3 mr-1 text-gray-400" />
+                                                                                            {lecture.room_no}
+                                                                                        </div>
+                                                                                        {lecture.batch && (
+                                                                                            <div className="text-[10px] font-black text-green-600 uppercase tracking-tighter bg-green-100 px-1.5 rounded">
+                                                                                                Batch {lecture.batch}
+                                                                                            </div>
+                                                                                        )}
+                                                                                    </div>
+                                                                                </div>
+                                                                            ))}
                                                                         </div>
-                                                                        <button
-                                                                            onClick={() => handleDelete(lecture.id)}
-                                                                            className="absolute top-1 right-1 p-0.5 text-gray-300 hover:text-red-500 opacity-0 group-hover/card:opacity-100 transition-opacity"
-                                                                        >
-                                                                            <Trash2 className="h-3 w-3" />
-                                                                        </button>
-                                                                    </div>
-                                                                    <div className="flex items-center gap-1 mb-2">
-                                                                        <span className="text-[9px] font-black text-blue-600">
-                                                                            {lecture.semester} - {lecture.division}
-                                                                        </span>
-                                                                        {lecture.batch && (
-                                                                            <span className="text-[8px] bg-blue-600 text-white px-1 rounded font-black">
-                                                                                {lecture.batch}
-                                                                            </span>
-                                                                        )}
-                                                                    </div>
-                                                                    <div className="flex flex-col gap-1">
-                                                                        <div className="flex items-center text-[8px] font-bold text-gray-500">
-                                                                            <MapPin className="h-2 w-2 mr-1" /> {lecture.room_no}
+                                                                    ) : (
+                                                                        <div className="h-full min-h-[100px] flex items-center justify-center border-2 border-dashed border-gray-50/50 rounded-2xl group-hover:border-gray-100 transition-colors">
+                                                                            {/* Empty Slot */}
                                                                         </div>
-                                                                        <div className="flex items-center text-[8px] font-bold text-gray-500">
-                                                                            <Clock className="h-2 w-2 mr-1" /> {lecture.start_time?.slice(0, 5)}
-                                                                        </div>
-                                                                    </div>
-                                                                </div>
-                                                            ))}
-                                                        </div>
-                                                    )}
-                                                </td>
-                                            );
-                                        })}
-                                    </tr>
-                                ))}
-                            </tbody>
-                        </table>
-                    </div>
+                                                                    )}
+                                                                </td>
+                                                            );
+                                                        })}
+                                                    </tr>
+                                                ))}
+                                            </tbody>
+                                        </table>
+                                    </div>
+                                </div>
+                            );
+                        })()
+                    ) : (
+                        <div className="bg-white rounded-[2rem] p-24 text-center border-2 border-dashed border-gray-100 shadow-sm animation-float">
+                            <div className="w-24 h-24 bg-blue-50 rounded-full flex items-center justify-center mx-auto mb-8 border-4 border-blue-100 shadow-inner">
+                                <Search className="h-10 w-10 text-blue-500" />
+                            </div>
+                            <h3 className="text-2xl font-black text-gray-900 uppercase italic tracking-tight">Select Division & Semester</h3>
+                            <p className="text-gray-400 font-bold uppercase tracking-widest text-xs mt-3 max-w-sm mx-auto leading-relaxed">
+                                Please use the filters above to select a specific <span className="text-blue-600">Class</span> to manage their timetable
+                            </p>
+                        </div>
+                    )}
                 </div>
             )}
 
@@ -760,7 +822,7 @@ export default function TimetableManager() {
 
                     <div className="p-8">
                         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-6">
-                            {Object.entries(entries.reduce((acc, e) => {
+                            {Object.entries((filters.division ? filteredEntries : entries).reduce((acc, e) => {
                                 const key = `${e.semester}-${e.division}`;
                                 if (!acc[key]) acc[key] = { lectures: 0, labs: { B1: 0, B2: 0, B3: 0, B4: 0, Entire: 0 }, total: 0 };
                                 const isLab = (e.subject_type || '').toLowerCase().includes('lab');
